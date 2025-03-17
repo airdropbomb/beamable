@@ -22,7 +22,7 @@ async function getProxies() {
         return proxies;
     } catch (error) {
         console.log(`No proxy file found or error reading proxy.txt: ${error.message}. Proceeding without proxy.`);
-        return null; // Proxy မရှိရင် null ပြန်ပေးမယ်
+        return null;
     }
 }
 
@@ -258,7 +258,7 @@ async function processTokenWithRetry(proxies, account, maxRetries = 3) {
                                     await button.click();
                                     await delay(3000);
                                     claimButtonFound = true;
-                                    console.log(`Account ${accountId}: Claim successful. Updating last check-in time.`);
+                                    console.log(`Account ${accountId}: Successfully clicked "${buttonText}" button. Check-in completed.`);
                                     await setLastCheckinTime(accountId, now);
                                     break;
                                 } catch (clickError) {
@@ -266,7 +266,7 @@ async function processTokenWithRetry(proxies, account, maxRetries = 3) {
                                     await page.evaluate((el) => el.click(), button);
                                     await delay(3000);
                                     claimButtonFound = true;
-                                    console.log(`Account ${accountId}: Claim successful via JavaScript click. Updating last check-in time.`);
+                                    console.log(`Account ${accountId}: Successfully clicked "${buttonText}" button via JavaScript click. Check-in completed.`);
                                     await setLastCheckinTime(accountId, now);
                                     break;
                                 }
