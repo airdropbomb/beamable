@@ -4,7 +4,6 @@ const path = require('path');
 
 const proxyFile = 'proxy.txt';
 const tokenFile = 'token.txt';
-const credentialsFile = 'credentials.json';
 const baseCheckinFile = 'last_checkin_time_';
 const outputDir = 'output';
 
@@ -32,25 +31,20 @@ async function getTokenData() {
         const lines = data.split('\n').map(line => line.trim()).filter(line => line);
         const tokenData = {};
         for (const line of lines) {
-            const [key, value] = line.split('=');
-            if (key && value) tokenData[key] = value;
+            const [accountId, tokenPair] = line.split('=');
+            if (accountId && tokenPair) {
+                const [key, value] = tokenPair.split('=');
+                if (key === 'harborSession') {
+                    tokenData[accountId] = value;
+                }
+            }
         }
-        if (!tokenData.harborSession) {
-            throw new Error('Missing harbor-session cookie in token.txt');
+        if (Object.keys(tokenData).length === 0) {
+            throw new Error('No valid harbor-session cookies found in token.txt');
         }
         return tokenData;
     } catch (error) {
         console.error(`Error reading token.txt: ${error.message}`);
-        process.exit(1);
-    }
-}
-
-async function getCredentials() {
-    try {
-        const data = await fs.readFile(credentialsFile, 'utf8');
-        return JSON.parse(data);
-    } catch (error) {
-        console.error(`Error reading credentials.json: ${error.message}`);
         process.exit(1);
     }
 }
@@ -78,9 +72,7 @@ function getRandomProxy(proxies) {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-async function processTokenWithRetry(proxies, account, maxRetries = 3) {
-    let { harborSession } = await getTokenData();
-    const { email, password, accountId } = account;
+async function processTokenWithRetry(proxies, accountId, harborSession, maxRetries = 3) {
     const lastCheckinTime = await getLastCheckinTime(accountId);
     const now = Date.now();
     const twentyFourHours = 24 * 60 * 60 * 1000;
@@ -130,6 +122,34 @@ async function processTokenWithRetry(proxies, account, maxRetries = 3) {
                 secure: true
             });
 
+            // Cookie expiration check
+            console.log(`Account ${accountId}: Checking cookie expiration...`);
+            await page.goto('https://hub.beamable.network/modules/dailycheckin', { waitUntil: 'networkidle2', timeout: 60000 });
+            const cookies = await page.cookies();
+            const harborCookie = cookies.find(cookie => cookie.name === 'harbor-session');
+            if (harborCookie) {
+                if (harborCookie.expires) {
+                    const expireDate = new Date(harborCookie.expires * 1000);
+                    const now = new Date();
+                    const timeLeft = harborCookie.expires * 1000 - now;
+                    const daysLeft = Math.floor(timeLeft / (1000 * 60 * 60 * 24));
+                    const hoursLeft = Math.floor((timeLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                    
+                    console.log(`Account ${accountId}: Cookie expires on ${expireDate.toLocaleString()}`);
+                    if (timeLeft <= 0) {
+                        console.log(`Account ${accountId}: Cookie has already expired!`);
+                        await browser.close();
+                        return;
+                    } else {
+                        console.log(`Account ${accountId}: Cookie will expire in ${daysLeft} days and ${hoursLeft} hours`);
+                    }
+                } else {
+                    console.log(`Account ${accountId}: No expiration set (session cookie)`);
+                }
+            } else {
+                console.log(`Account ${accountId}: harbor-session cookie not found on page`);
+            }
+
             await page.setExtraHTTPHeaders({
                 'Accept-Language': 'en-US,en;q=0.9,my;q=0.8',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -142,7 +162,6 @@ async function processTokenWithRetry(proxies, account, maxRetries = 3) {
             }
 
             console.log(`Account ${accountId}: Navigating to daily check-in page with harbor-session token...`);
-            await page.goto('https://hub.beamable.network/modules/dailycheckin', { waitUntil: 'networkidle2', timeout: 60000 });
             await delay(30000);
 
             await page.evaluate(() => {
@@ -165,43 +184,9 @@ async function processTokenWithRetry(proxies, account, maxRetries = 3) {
             console.log(`Account ${accountId}: Current URL: ${currentUrl}`);
 
             if (currentUrl.includes('/onboarding/login') || currentUrl.includes('/onboarding/confirm')) {
-                console.log(`Account ${accountId}: Session expired. Attempting to re-authenticate...`);
-                await page.goto('https://hub.beamable.network/onboarding/login', { waitUntil: 'networkidle2', timeout: 60000 });
-                await delay(2000);
-
-                await page.type('input[type="email"]', email);
-                await page.type('input[type="password"]', password);
-                await page.click('button[type="submit"]');
-                await delay(5000);
-
-                const cookies = await page.cookies();
-                const newHarborSession = cookies.find(cookie => cookie.name === 'harbor-session')?.value;
-                if (newHarborSession) {
-                    harborSession = newHarborSession;
-                    await fs.writeFile(tokenFile, `harborSession=${harborSession}`, 'utf8');
-                    console.log(`Account ${accountId}: Cookie updated successfully with new harbor-session value.`);
-                } else {
-                    console.log(`Account ${accountId}: Failed to retrieve new harbor-session cookie. Manual verification may be required.`);
-                }
-
-                await page.goto('https://hub.beamable.network/modules/dailycheckin', { waitUntil: 'networkidle2', timeout: 60000 });
-                await delay(30000);
-
-                await page.evaluate(() => {
-                    const sidebar = document.querySelector('.sidebar');
-                    if (sidebar && window.getComputedStyle(sidebar).width === '0px') {
-                        const toggle = document.querySelector('.sidebar-toggle');
-                        if (toggle) toggle.click();
-                    }
-                });
-                await delay(2000);
-
-                await page.waitForFunction(() => {
-                    const buttons = document.querySelectorAll('button');
-                    return Array.from(buttons).some(button => 
-                        button.textContent.trim().toLowerCase().includes('claim')
-                    );
-                }, { timeout: 30000 });
+                console.log(`Account ${accountId}: Session expired. Please update harborSession cookie manually in token.txt using login link from email.`);
+                await browser.close();
+                return;
             } else if (currentUrl.includes('/dashboard') || currentUrl.includes('/modules/dailycheckin')) {
                 console.log(`Account ${accountId}: Successfully logged in or redirected to dashboard/daily check-in page.`);
             } else {
@@ -258,7 +243,7 @@ async function processTokenWithRetry(proxies, account, maxRetries = 3) {
                                     await button.click();
                                     await delay(3000);
                                     claimButtonFound = true;
-                                    console.log(`Account ${accountId}: Claim successful`); // ဒီမှာ "Claim successful" တစ်ခုတည်းပဲ ပြမယ်
+                                    console.log(`Account ${accountId}: Claim successful`);
                                     await setLastCheckinTime(accountId, now);
                                     break;
                                 } catch (clickError) {
@@ -266,7 +251,7 @@ async function processTokenWithRetry(proxies, account, maxRetries = 3) {
                                     await page.evaluate((el) => el.click(), button);
                                     await delay(3000);
                                     claimButtonFound = true;
-                                    console.log(`Account ${accountId}: Claim successful`); // JavaScript click အောင်မြင်ရင်လည်း ဒီတစ်ခုပဲ
+                                    console.log(`Account ${accountId}: Claim successful`);
                                     await setLastCheckinTime(accountId, now);
                                     break;
                                 }
@@ -309,7 +294,6 @@ async function processTokenWithRetry(proxies, account, maxRetries = 3) {
             const dataToWrite = `Buttons:\n${JSON.stringify(data.buttons, null, 2)}\n\nForms:\n${JSON.stringify(data.forms, null, 2)}`;
             await fs.writeFile(path.join(accountDir, 'dailycheckin_data.txt'), dataToWrite, 'utf8');
             console.log(`Account ${accountId}: Data successfully saved to ${path.join(accountDir, 'dailycheckin_data.txt')}`);
-            // console.log(`Account ${accountId}: Extracted Data:`, data); // ဒီ line ကို ဖယ်ထားလိုက်တယ်
 
             await browser.close();
             return;
@@ -327,12 +311,12 @@ async function processTokenWithRetry(proxies, account, maxRetries = 3) {
 
 async function processToken() {
     const proxies = await getProxies();
-    const accounts = await getCredentials();
+    const tokenData = await getTokenData();
 
-    for (const account of accounts) {
-        console.log(`Processing account: ${account.accountId}`);
-        await processTokenWithRetry(proxies, account);
-        await delay(5000);
+    for (const accountId in tokenData) {
+        console.log(`Processing account: ${accountId}`);
+        await processTokenWithRetry(proxies, accountId, tokenData[accountId]);
+        await delay(5000); // Account တစ်ခုနဲ့တစ်ခု ကြားမှာ delay ထည့်တယ်
     }
 }
 
