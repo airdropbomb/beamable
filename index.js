@@ -6,8 +6,6 @@ const proxyFile = 'proxy.txt';
 const tokenFile = 'token.txt';
 const credentialsFile = 'credentials.json';
 const baseCheckinFile = 'last_checkin_time_';
-
-// Output folder ဖန်တီးမယ်
 const outputDir = 'output';
 
 async function ensureOutputDir(accountId) {
@@ -23,8 +21,8 @@ async function getProxies() {
         if (proxies.length === 0) throw new Error('No proxies found in proxy.txt');
         return proxies;
     } catch (error) {
-        console.error(`Error reading proxy.txt: ${error.message}`);
-        process.exit(1);
+        console.log(`No proxy file found or error reading proxy.txt: ${error.message}. Proceeding without proxy.`);
+        return null; // Proxy မရှိရင် null ပြန်ပေးမယ်
     }
 }
 
@@ -38,7 +36,7 @@ async function getTokenData() {
             if (key && value) tokenData[key] = value;
         }
         if (!tokenData.harborSession) {
-            throw new Error('Missing harbor-session cookie in token.txt. Expected format: harborSession=your_cookie_value');
+            throw new Error('Missing harbor-session cookie in token.txt');
         }
         return tokenData;
     } catch (error) {
@@ -63,7 +61,7 @@ async function getLastCheckinTime(accountId) {
         const data = await fs.readFile(fileName, 'utf8');
         return parseInt(data, 10) || 0;
     } catch (error) {
-        return 0; // ဖိုင်မရှိရင် 0 ပြန်ပေးမယ်
+        return 0;
     }
 }
 
@@ -73,6 +71,7 @@ async function setLastCheckinTime(accountId, timestamp) {
 }
 
 function getRandomProxy(proxies) {
+    if (!proxies) return null;
     const randomIndex = Math.floor(Math.random() * proxies.length);
     return proxies[randomIndex];
 }
@@ -84,9 +83,8 @@ async function processTokenWithRetry(proxies, account, maxRetries = 3) {
     const { email, password, accountId } = account;
     const lastCheckinTime = await getLastCheckinTime(accountId);
     const now = Date.now();
-    const twentyFourHours = 24 * 60 * 60 * 1000; // 24 နာရီမှာ milliseconds
+    const twentyFourHours = 24 * 60 * 60 * 1000;
 
-    // 24 နာရီမဖြစ်သေးရင် မစမ်းဖို့
     if (now - lastCheckinTime < twentyFourHours) {
         const timeLeft = twentyFourHours - (now - lastCheckinTime);
         const hoursLeft = Math.floor(timeLeft / (1000 * 60 * 60));
@@ -97,31 +95,32 @@ async function processTokenWithRetry(proxies, account, maxRetries = 3) {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         const selectedProxy = getRandomProxy(proxies);
-        console.log(`Account ${accountId} - Attempt ${attempt}/${maxRetries} - Using proxy: ${selectedProxy}`);
+        console.log(`Account ${accountId} - Attempt ${attempt}/${maxRetries} ${selectedProxy ? `- Using proxy: ${selectedProxy}` : '- No proxy used'}`);
 
         let browser;
         try {
-            const proxyParts = selectedProxy.replace('http://', '').split('@');
-            let proxyServer, auth = '';
-            if (proxyParts.length > 1) {
-                auth = proxyParts[0];
-                proxyServer = proxyParts[1];
-            } else {
-                proxyServer = proxyParts[0];
+            const launchArgs = ['--no-sandbox', '--disable-setuid-sandbox'];
+            if (selectedProxy) {
+                const proxyParts = selectedProxy.replace('http://', '').split('@');
+                let proxyServer, auth = '';
+                if (proxyParts.length > 1) {
+                    auth = proxyParts[0];
+                    proxyServer = proxyParts[1];
+                } else {
+                    proxyServer = proxyParts[0];
+                }
+                launchArgs.push(`--proxy-server=${proxyServer}`);
+                var [username, pass] = auth ? auth.split(':') : [null, null];
             }
-            const proxyArg = auth ? `--proxy-server=${proxyServer}` : `--proxy-server=${proxyServer}`;
-            const [username, pass] = auth ? auth.split(':') : [null, null];
 
             browser = await puppeteer.launch({
                 headless: true,
-                args: [proxyArg, '--no-sandbox', '--disable-setuid-sandbox']
+                args: launchArgs
             });
             const page = await browser.newPage();
 
-            // Set viewport to ensure 100% zoom level
             await page.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
 
-            // Cookie ထည့်မယ်
             await page.setCookie({
                 name: 'harbor-session',
                 value: harborSession,
@@ -142,12 +141,10 @@ async function processTokenWithRetry(proxies, account, maxRetries = 3) {
                 await page.authenticate({ username, password: pass });
             }
 
-            // Daily Check-in စာမျက်နှာကို သွားမယ်
             console.log(`Account ${accountId}: Navigating to daily check-in page with harbor-session token...`);
             await page.goto('https://hub.beamable.network/modules/dailycheckin', { waitUntil: 'networkidle2', timeout: 60000 });
-            await delay(30000); // Wait for 30 seconds
+            await delay(30000);
 
-            // Expand sidebar if collapsed
             await page.evaluate(() => {
                 const sidebar = document.querySelector('.sidebar');
                 if (sidebar && window.getComputedStyle(sidebar).width === '0px') {
@@ -157,7 +154,6 @@ async function processTokenWithRetry(proxies, account, maxRetries = 3) {
             });
             await delay(2000);
 
-            // Wait for "Claim" button to be available
             await page.waitForFunction(() => {
                 const buttons = document.querySelectorAll('button');
                 return Array.from(buttons).some(button => 
@@ -165,7 +161,6 @@ async function processTokenWithRetry(proxies, account, maxRetries = 3) {
                 );
             }, { timeout: 30000 });
 
-            // လက်ရှိ URL ကို စစ်မယ်
             const currentUrl = page.url();
             console.log(`Account ${accountId}: Current URL: ${currentUrl}`);
 
@@ -174,13 +169,11 @@ async function processTokenWithRetry(proxies, account, maxRetries = 3) {
                 await page.goto('https://hub.beamable.network/onboarding/login', { waitUntil: 'networkidle2', timeout: 60000 });
                 await delay(2000);
 
-                // Login ပုံစံ ဖြည့်မယ်
                 await page.type('input[type="email"]', email);
                 await page.type('input[type="password"]', password);
                 await page.click('button[type="submit"]');
                 await delay(5000);
 
-                // အသစ် cookie ကို ယူမယ်
                 const cookies = await page.cookies();
                 const newHarborSession = cookies.find(cookie => cookie.name === 'harbor-session')?.value;
                 if (newHarborSession) {
@@ -191,11 +184,9 @@ async function processTokenWithRetry(proxies, account, maxRetries = 3) {
                     console.log(`Account ${accountId}: Failed to retrieve new harbor-session cookie. Manual verification may be required.`);
                 }
 
-                // ထပ်မံ Daily Check-in ကို သွားမယ်
                 await page.goto('https://hub.beamable.network/modules/dailycheckin', { waitUntil: 'networkidle2', timeout: 60000 });
                 await delay(30000);
 
-                // Expand sidebar again
                 await page.evaluate(() => {
                     const sidebar = document.querySelector('.sidebar');
                     if (sidebar && window.getComputedStyle(sidebar).width === '0px') {
@@ -205,7 +196,6 @@ async function processTokenWithRetry(proxies, account, maxRetries = 3) {
                 });
                 await delay(2000);
 
-                // Wait for "Claim" button again
                 await page.waitForFunction(() => {
                     const buttons = document.querySelectorAll('button');
                     return Array.from(buttons).some(button => 
@@ -218,13 +208,11 @@ async function processTokenWithRetry(proxies, account, maxRetries = 3) {
                 console.log(`Account ${accountId}: Redirected to an unexpected page.`);
             }
 
-            // "Claimed" ဒါမှမဟုတ် "Already Claimed" စာသားရှိမရှိ စစ်မယ်
             const pageText = await page.evaluate(() => document.body.innerText);
             if (pageText.toLowerCase().includes('claimed') || pageText.toLowerCase().includes('already claimed') || pageText.toLowerCase().includes('check-in complete')) {
                 console.log(`Account ${accountId}: Daily check-in already completed. Updating last check-in time.`);
                 await setLastCheckinTime(accountId, now);
             } else {
-                // Target the parent "group" class and check its children for "Claim"
                 const dayGroups = await page.$$('div.relative.flex.flex-col.group');
                 let claimButtonFound = false;
 
@@ -242,14 +230,9 @@ async function processTokenWithRetry(proxies, account, maxRetries = 3) {
                         continue;
                     }
 
-                    // Check for buttons inside the group
                     const buttons = await group.$$('button');
                     for (const button of buttons) {
-                        // Get the text content including nested elements
-                        const buttonText = await page.evaluate(el => {
-                            return el.textContent.trim().toLowerCase();
-                        }, button);
-
+                        const buttonText = await page.evaluate(el => el.textContent.trim().toLowerCase(), button);
                         const buttonClass = await page.evaluate(el => el.className, button);
 
                         console.log(`Account ${accountId}: Checking button with class "${buttonClass}" and text "${buttonText}"`);
@@ -262,13 +245,8 @@ async function processTokenWithRetry(proxies, account, maxRetries = 3) {
                             buttonText.includes('daily check-in')
                         ) {
                             console.log(`Account ${accountId}: Found a "${buttonText}" button, attempting to click...`);
+                            await page.evaluate((el) => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), button);
 
-                            // Scroll to the button to ensure visibility
-                            await page.evaluate((el) => {
-                                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            }, button);
-
-                            // Check if button is clickable
                             const isClickable = await page.evaluate((el) => {
                                 const rect = el.getBoundingClientRect();
                                 const style = window.getComputedStyle(el);
@@ -305,7 +283,6 @@ async function processTokenWithRetry(proxies, account, maxRetries = 3) {
                 }
             }
 
-            // Output folder ဖန်တီးပြီး ဖိုင်သိမ်းမယ်
             const accountDir = await ensureOutputDir(accountId);
             const content = await page.content();
             await fs.writeFile(path.join(accountDir, 'dailycheckin_page.html'), content, 'utf8');
@@ -319,11 +296,7 @@ async function processTokenWithRetry(proxies, account, maxRetries = 3) {
                         if (statusText.toLowerCase().includes('loading')) statusText = 'Loading';
                         else if (statusText.toLowerCase().includes('searching')) statusText = 'Searching';
                         else if (statusText.toLowerCase().includes('process')) statusText = 'Processing';
-                        return {
-                            text: statusText,
-                            id: b.id,
-                            class: b.className
-                        };
+                        return { text: statusText, id: b.id, class: b.className };
                     })
                     .filter((item, index, self) => index === self.findIndex((t) => t.text === item.text && t.class === item.class));
                 const forms = Array.from(document.querySelectorAll('form')).map(f => ({
@@ -359,7 +332,7 @@ async function processToken() {
     for (const account of accounts) {
         console.log(`Processing account: ${account.accountId}`);
         await processTokenWithRetry(proxies, account);
-        await delay(5000); // အကောင့်တစ်ခုချင်းစီကြား 5 စက္ကန့် စောင့်မယ်
+        await delay(5000);
     }
 }
 
