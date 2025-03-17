@@ -96,7 +96,7 @@ async function processTokenWithRetry(proxies, accountId, harborSession, maxRetri
         const hoursLeft = Math.floor(timeLeft / (1000 * 60 * 60));
         const minutesLeft = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
         console.log(`Account ${accountId}: Daily check-in already completed. Please wait ${hoursLeft}h ${minutesLeft}m before next attempt.`);
-        return false; // Return false to indicate no action was taken
+        return false; // No action taken
     }
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -212,7 +212,7 @@ async function processTokenWithRetry(proxies, accountId, harborSession, maxRetri
                 console.log(`Account ${accountId}: Daily check-in already completed. Updating last check-in time.`);
                 await setLastCheckinTime(accountId, now);
                 await browser.close();
-                return true; // Return true to indicate success
+                return true;
             } else {
                 const dayGroups = await page.$$('div.relative.flex.flex-col.group');
                 let claimButtonFound = false;
@@ -283,7 +283,7 @@ async function processTokenWithRetry(proxies, accountId, harborSession, maxRetri
                     console.log(`Account ${accountId}: No "Claim" or related button found or clickable. Daily check-in may already be completed, or session may have expired.`);
                 } else {
                     await browser.close();
-                    return true; // Return true to indicate success
+                    return true;
                 }
             }
 
@@ -336,20 +336,23 @@ async function processToken() {
 
     // Infinite loop to keep the script running
     while (true) {
+        let allAccountsProcessed = true;
+
         for (const accountId in tokenData) {
             console.log(`Processing account: ${accountId}`);
             const success = await processTokenWithRetry(proxies, accountId, tokenData[accountId]);
             if (success) {
                 console.log(`Account ${accountId}: Successfully claimed. Waiting for next cycle...`);
             } else {
-                console.log(`Account ${accountId}: No action taken or failed. Checking again in next cycle...`);
+                console.log(`Account ${accountId}: No action taken or failed. Will check again in next cycle...`);
+                allAccountsProcessed = false; // If any account fails or can't claim yet, we don't wait 24 hours yet
             }
         }
 
-        // Wait for 1 hour before checking again (adjustable interval)
-        const checkInterval = 60 * 60 * 1000; // 1 hour in milliseconds
-        console.log(`All accounts processed. Waiting ${checkInterval / (60 * 1000)} minutes before next check...`);
-        await delay(checkInterval);
+        // Wait for 24 hours only if all accounts were processed successfully or don't need action
+        const waitTime = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+        console.log(`All accounts processed. Waiting ${waitTime / (60 * 60 * 1000)} hours before next check...`);
+        await delay(waitTime);
     }
 }
 
