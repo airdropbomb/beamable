@@ -28,20 +28,28 @@ async function getProxies() {
 async function getTokenData() {
     try {
         const data = await fs.readFile(tokenFile, 'utf8');
+        console.log(`Raw content of token.txt:\n${data}`);
         const lines = data.split('\n').map(line => line.trim()).filter(line => line);
+        console.log(`Parsed lines: ${JSON.stringify(lines)}`);
         const tokenData = {};
 
         for (const line of lines) {
-            const [accountId, rest] = line.split('=', 2);
-            if (accountId && rest) {
-                const harborSessionPrefix = 'harborSession=';
-                if (rest.startsWith(harborSessionPrefix)) {
-                    const value = rest.slice(harborSessionPrefix.length);
-                    tokenData[accountId] = value;
-                    console.log(`Account ${accountId}: Raw cookie value from token.txt - ${value}`);
-                } else {
-                    console.error(`Account ${accountId}: Invalid format in token.txt - ${rest}`);
-                }
+            console.log(`Processing line: ${line}`);
+            const parts = line.split('=');
+            if (parts.length < 3) {
+                console.error(`Invalid line format (not enough parts): ${line}`);
+                continue;
+            }
+            const accountId = parts[0];
+            const key = parts[1];
+            const value = parts.slice(2).join('='); // Rejoin the rest in case value contains '='
+            console.log(`accountId: ${accountId}, key: ${key}, value: ${value}`);
+
+            if (key === 'harborSession') {
+                tokenData[accountId] = value;
+                console.log(`Account ${accountId}: Raw cookie value - ${value}`);
+            } else {
+                console.error(`Account ${accountId}: Invalid key (expected harborSession, got ${key})`);
             }
         }
 
