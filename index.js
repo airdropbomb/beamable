@@ -30,15 +30,23 @@ async function getTokenData() {
         const data = await fs.readFile(tokenFile, 'utf8');
         const lines = data.split('\n').map(line => line.trim()).filter(line => line);
         const tokenData = {};
+
         for (const line of lines) {
-            const [accountId, tokenPair] = line.split('=');
-            if (accountId && tokenPair) {
-                const [key, value] = tokenPair.split('=');
-                if (key === 'harborSession') {
+            // Split only on the first '=' to separate accountId and the rest
+            const [accountId, rest] = line.split('=', 2);
+            if (accountId && rest) {
+                // Extract harborSession value (everything after 'harborSession=')
+                const harborSessionPrefix = 'harborSession=';
+                if (rest.startsWith(harborSessionPrefix)) {
+                    const value = rest.slice(harborSessionPrefix.length);
                     tokenData[accountId] = value;
+                    console.log(`Account ${accountId}: Raw cookie value from token.txt - ${value}`);
+                } else {
+                    console.error(`Account ${accountId}: Invalid format in token.txt - ${rest}`);
                 }
             }
         }
+
         if (Object.keys(tokenData).length === 0) {
             throw new Error('No valid harbor-session cookies found in token.txt');
         }
@@ -113,6 +121,7 @@ async function processTokenWithRetry(proxies, accountId, harborSession, maxRetri
 
             await page.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
 
+            console.log(`Account ${accountId}: Setting cookie - ${harborSession}`);
             await page.setCookie({
                 name: 'harbor-session',
                 value: harborSession,
@@ -122,7 +131,6 @@ async function processTokenWithRetry(proxies, accountId, harborSession, maxRetri
                 secure: true
             });
 
-            // Cookie expiration check
             console.log(`Account ${accountId}: Checking cookie expiration...`);
             await page.goto('https://hub.beamable.network/modules/dailycheckin', { waitUntil: 'networkidle2', timeout: 60000 });
             const cookies = await page.cookies();
@@ -316,7 +324,7 @@ async function processToken() {
     for (const accountId in tokenData) {
         console.log(`Processing account: ${accountId}`);
         await processTokenWithRetry(proxies, accountId, tokenData[accountId]);
-        await delay(5000); // Account တစ်ခုနဲ့တစ်ခု ကြားမှာ delay ထည့်တယ်
+        await delay(5000);
     }
 }
 
