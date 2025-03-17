@@ -32,10 +32,8 @@ async function getTokenData() {
         const tokenData = {};
 
         for (const line of lines) {
-            // Split only on the first '=' to separate accountId and the rest
             const [accountId, rest] = line.split('=', 2);
             if (accountId && rest) {
-                // Extract harborSession value (everything after 'harborSession=')
                 const harborSessionPrefix = 'harborSession=';
                 if (rest.startsWith(harborSessionPrefix)) {
                     const value = rest.slice(harborSessionPrefix.length);
