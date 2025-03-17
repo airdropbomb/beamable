@@ -258,7 +258,7 @@ async function processTokenWithRetry(proxies, account, maxRetries = 3) {
                                     await button.click();
                                     await delay(3000);
                                     claimButtonFound = true;
-                                    console.log(`Account ${accountId}: Successfully clicked "${buttonText}" button. Check-in completed.`);
+                                    console.log(`Account ${accountId}: Claim successful`); // ဒီမှာ "Claim successful" တစ်ခုတည်းပဲ ပြမယ်
                                     await setLastCheckinTime(accountId, now);
                                     break;
                                 } catch (clickError) {
@@ -266,7 +266,7 @@ async function processTokenWithRetry(proxies, account, maxRetries = 3) {
                                     await page.evaluate((el) => el.click(), button);
                                     await delay(3000);
                                     claimButtonFound = true;
-                                    console.log(`Account ${accountId}: Successfully clicked "${buttonText}" button via JavaScript click. Check-in completed.`);
+                                    console.log(`Account ${accountId}: Claim successful`); // JavaScript click အောင်မြင်ရင်လည်း ဒီတစ်ခုပဲ
                                     await setLastCheckinTime(accountId, now);
                                     break;
                                 }
@@ -309,7 +309,7 @@ async function processTokenWithRetry(proxies, account, maxRetries = 3) {
             const dataToWrite = `Buttons:\n${JSON.stringify(data.buttons, null, 2)}\n\nForms:\n${JSON.stringify(data.forms, null, 2)}`;
             await fs.writeFile(path.join(accountDir, 'dailycheckin_data.txt'), dataToWrite, 'utf8');
             console.log(`Account ${accountId}: Data successfully saved to ${path.join(accountDir, 'dailycheckin_data.txt')}`);
-            console.log(`Account ${accountId}: Extracted Data:`, data);
+            // console.log(`Account ${accountId}: Extracted Data:`, data); // ဒီ line ကို ဖယ်ထားလိုက်တယ်
 
             await browser.close();
             return;
