@@ -139,26 +139,27 @@ async function processTokenWithRetry(proxies, accountId, harborSession, maxRetri
 
             console.log(`Account ${accountId}: Checking cookie expiration...`);
             await page.goto('https://hub.beamable.network/modules/dailycheckin', { waitUntil: 'networkidle2', timeout: 60000 });
+
+            // Check the cookie expiration after page load
             const cookies = await page.cookies();
             const harborCookie = cookies.find(cookie => cookie.name === 'harbor-session');
             if (harborCookie) {
-                if (harborCookie.expires) {
+                if (harborCookie.expires && harborCookie.expires !== -1) {
                     const expireDate = new Date(harborCookie.expires * 1000);
                     const now = new Date();
-                    const timeLeft = harborCookie.expires * 1000 - now;
-                    const daysLeft = Math.floor(timeLeft / (1000 * 60 * 60 * 24));
-                    const hoursLeft = Math.floor((timeLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                    
+                    const timeLeft = harborCookie.expires * 1000 - now.getTime();
                     console.log(`Account ${accountId}: Cookie expires on ${expireDate.toLocaleString()}`);
                     if (timeLeft <= 0) {
                         console.log(`Account ${accountId}: Cookie has already expired!`);
                         await browser.close();
                         return;
                     } else {
+                        const daysLeft = Math.floor(timeLeft / (1000 * 60 * 60 * 24));
+                        const hoursLeft = Math.floor((timeLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
                         console.log(`Account ${accountId}: Cookie will expire in ${daysLeft} days and ${hoursLeft} hours`);
                     }
                 } else {
-                    console.log(`Account ${accountId}: No expiration set (session cookie)`);
+                    console.log(`Account ${accountId}: No expiration set or invalid expiration (session cookie)`);
                 }
             } else {
                 console.log(`Account ${accountId}: harbor-session cookie not found on page`);
