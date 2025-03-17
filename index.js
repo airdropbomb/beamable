@@ -42,7 +42,7 @@ async function getTokenData() {
             }
             const accountId = parts[0];
             const key = parts[1];
-            const value = parts.slice(2).join('='); // Rejoin the rest in case value contains '='
+            const value = parts.slice(2).join('=');
             console.log(`accountId: ${accountId}, key: ${key}, value: ${value}`);
 
             if (key === 'harborSession') {
@@ -96,7 +96,7 @@ async function processTokenWithRetry(proxies, accountId, harborSession, maxRetri
         const hoursLeft = Math.floor(timeLeft / (1000 * 60 * 60));
         const minutesLeft = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
         console.log(`Account ${accountId}: Daily check-in already completed. Please wait ${hoursLeft}h ${minutesLeft}m before next attempt.`);
-        return;
+        return false; // Return false to indicate no action was taken
     }
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -140,7 +140,6 @@ async function processTokenWithRetry(proxies, accountId, harborSession, maxRetri
             console.log(`Account ${accountId}: Checking cookie expiration...`);
             await page.goto('https://hub.beamable.network/modules/dailycheckin', { waitUntil: 'networkidle2', timeout: 60000 });
 
-            // Check the cookie expiration after page load
             const cookies = await page.cookies();
             const harborCookie = cookies.find(cookie => cookie.name === 'harbor-session');
             if (harborCookie) {
@@ -152,7 +151,7 @@ async function processTokenWithRetry(proxies, accountId, harborSession, maxRetri
                     if (timeLeft <= 0) {
                         console.log(`Account ${accountId}: Cookie has already expired!`);
                         await browser.close();
-                        return;
+                        return false;
                     } else {
                         const daysLeft = Math.floor(timeLeft / (1000 * 60 * 60 * 24));
                         const hoursLeft = Math.floor((timeLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
@@ -201,7 +200,7 @@ async function processTokenWithRetry(proxies, accountId, harborSession, maxRetri
             if (currentUrl.includes('/onboarding/login') || currentUrl.includes('/onboarding/confirm')) {
                 console.log(`Account ${accountId}: Session expired. Please update harborSession cookie manually in token.txt using login link from email.`);
                 await browser.close();
-                return;
+                return false;
             } else if (currentUrl.includes('/dashboard') || currentUrl.includes('/modules/dailycheckin')) {
                 console.log(`Account ${accountId}: Successfully logged in or redirected to dashboard/daily check-in page.`);
             } else {
@@ -212,6 +211,8 @@ async function processTokenWithRetry(proxies, accountId, harborSession, maxRetri
             if (pageText.toLowerCase().includes('claimed') || pageText.toLowerCase().includes('already claimed') || pageText.toLowerCase().includes('check-in complete')) {
                 console.log(`Account ${accountId}: Daily check-in already completed. Updating last check-in time.`);
                 await setLastCheckinTime(accountId, now);
+                await browser.close();
+                return true; // Return true to indicate success
             } else {
                 const dayGroups = await page.$$('div.relative.flex.flex-col.group');
                 let claimButtonFound = false;
@@ -280,6 +281,9 @@ async function processTokenWithRetry(proxies, accountId, harborSession, maxRetri
 
                 if (!claimButtonFound) {
                     console.log(`Account ${accountId}: No "Claim" or related button found or clickable. Daily check-in may already be completed, or session may have expired.`);
+                } else {
+                    await browser.close();
+                    return true; // Return true to indicate success
                 }
             }
 
@@ -311,27 +315,41 @@ async function processTokenWithRetry(proxies, accountId, harborSession, maxRetri
             console.log(`Account ${accountId}: Data successfully saved to ${path.join(accountDir, 'dailycheckin_data.txt')}`);
 
             await browser.close();
-            return;
+            return false;
         } catch (error) {
             console.error(`Account ${accountId} - Attempt ${attempt} failed: ${error.message}`);
             if (browser) await browser.close();
             if (attempt === maxRetries) {
-                console.error(`Account ${accountId}: All attempts failed. Exiting...`);
+                console.error(`Account ${accountId}: All attempts failed. Will retry after delay...`);
+                return false;
             } else {
                 await delay(2000);
             }
         }
     }
+    return false;
 }
 
 async function processToken() {
     const proxies = await getProxies();
     const tokenData = await getTokenData();
 
-    for (const accountId in tokenData) {
-        console.log(`Processing account: ${accountId}`);
-        await processTokenWithRetry(proxies, accountId, tokenData[accountId]);
-        await delay(5000);
+    // Infinite loop to keep the script running
+    while (true) {
+        for (const accountId in tokenData) {
+            console.log(`Processing account: ${accountId}`);
+            const success = await processTokenWithRetry(proxies, accountId, tokenData[accountId]);
+            if (success) {
+                console.log(`Account ${accountId}: Successfully claimed. Waiting for next cycle...`);
+            } else {
+                console.log(`Account ${accountId}: No action taken or failed. Checking again in next cycle...`);
+            }
+        }
+
+        // Wait for 1 hour before checking again (adjustable interval)
+        const checkInterval = 60 * 60 * 1000; // 1 hour in milliseconds
+        console.log(`All accounts processed. Waiting ${checkInterval / (60 * 1000)} minutes before next check...`);
+        await delay(checkInterval);
     }
 }
 
