@@ -16,11 +16,18 @@ const proxyFile = 'proxy.txt';
 const tokenFile = 'token.txt';
 const baseCheckinFile = 'last_checkin_time_';
 const outputDir = 'output';
+const checkinDir = 'last_checkins'; // New folder for check-in times
 
 async function ensureOutputDir(accountId) {
     const accountDir = path.join(outputDir, accountId);
     await fs.mkdir(accountDir, { recursive: true });
     return accountDir;
+}
+
+async function ensureCheckinDir() {
+    const checkinFolder = path.join(checkinDir);
+    await fs.mkdir(checkinFolder, { recursive: true });
+    return checkinFolder;
 }
 
 async function getProxies() {
@@ -74,7 +81,8 @@ async function getTokenData() {
 }
 
 async function getLastCheckinTime(accountId) {
-    const fileName = `${baseCheckinFile}${accountId}.txt`;
+    const checkinFolder = await ensureCheckinDir();
+    const fileName = path.join(checkinFolder, `${baseCheckinFile}${accountId}.txt`);
     try {
         const data = await fs.readFile(fileName, 'utf8');
         return parseInt(data, 10) || 0;
@@ -84,7 +92,8 @@ async function getLastCheckinTime(accountId) {
 }
 
 async function setLastCheckinTime(accountId, timestamp) {
-    const fileName = `${baseCheckinFile}${accountId}.txt`;
+    const checkinFolder = await ensureCheckinDir();
+    const fileName = path.join(checkinFolder, `${baseCheckinFile}${accountId}.txt`);
     await fs.writeFile(fileName, timestamp.toString(), 'utf8');
 }
 
