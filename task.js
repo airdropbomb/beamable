@@ -132,7 +132,7 @@ async function processQuest(token, quest) {
   const browserArgs = ['--no-sandbox', '--disable-setuid-sandbox'];
   const browser = await puppeteer.launch({
     headless: true,
-    executablePath: '/usr/bin/chromium-browser', // Contabo VPS မှာ Chromium ရဲ့ path
+    executablePath: '/usr/bin/chromium-browser',
     args: browserArgs,
   });
   const page = await browser.newPage();
@@ -154,70 +154,56 @@ async function processQuest(token, quest) {
     const pageContent = await page.content();
     console.log('Quest details page content:', pageContent);
 
-    if (!quest.isClaimable) {
+    // အရင်ဆုံး Claim Reward ခလုတ်ရှိမရှိ စစ်မယ်
+    let claimButton = await page.$('button.btn.btn-primary');
+    let buttonText = claimButton ? await page.evaluate(btn => btn.textContent.trim(), claimButton) : null;
+
+    if (claimButton && buttonText.toLowerCase().includes('claim')) {
+      console.log('Claim Reward ခလုတ်ရှိပြီးသားပါ၊ Click the Link ကို ကျော်ပါမယ်');
+    } else {
+      // Claim Reward ခလုတ်မရှိရင် Click the Link ကို ရှာပြီး နှိပ်မယ်
       console.log('Quest is not claimable yet. Attempting to complete required steps...');
       console.log('Looking for "Click the Link" button');
       const clickLinkButton = await waitForSelectorWithRetry(page, 'a.btn-accent');
       if (clickLinkButton) {
-        const buttonText = await page.evaluate(el => el.textContent.trim(), clickLinkButton);
-        if (buttonText === 'Click the Link') {
+        const linkButtonText = await page.evaluate(el => el.textContent.trim(), clickLinkButton);
+        if (linkButtonText === 'Click the Link') {
           await clickLinkButton.click();
           console.log('Clicked "Click the Link" button');
           const contentAfterClick = await page.content();
           console.log('Page content after clicking:', contentAfterClick);
           await new Promise(resolve => setTimeout(resolve, 10000));
+
+          // Quest စာမျက်နှာကို ပြန်မသွားဘဲ လက်ရှိစာမျက်နှာကို Reload လုပ်မယ်
+          console.log('Reloading the current page...');
+          await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
+          await new Promise(resolve => setTimeout(resolve, 5000));
+          const reloadedPageContent = await page.content();
+          console.log('Page content after reload:', reloadedPageContent);
         } else {
-          console.log('Found element does not have the text "Click the Link":', buttonText);
+          console.log('Found element does not have the text "Click the Link":', linkButtonText);
         }
       } else {
         console.log('Could not find "Click the Link" button');
       }
+
+      // Reload လုပ်ပြီးရင် Claim Reward ခလုတ်ကို ထပ်ရှာမယ်
+      claimButton = await page.$('button.btn.btn-primary');
+      buttonText = claimButton ? await page.evaluate(btn => btn.textContent.trim(), claimButton) : null;
     }
 
-    console.log('Navigating back to quests page');
-    await page.goto(QUESTS_URL, { waitUntil: 'networkidle2', timeout: 30000 });
-
-    await new Promise(resolve => setTimeout(resolve, 30000));
-    const questsPageContent = await page.content();
-    console.log('Quests page content after navigation:', questsPageContent);
-
-    console.log('Checking if quest is now claimable...');
-    const questContainerSelector = `div[class*="flex-col gap-4 p-4 justify-between"]`;
-    const questContainers = await page.$$(questContainerSelector);
-
-    let questFound = false;
-    for (const container of questContainers) {
-      const titleElement = await container.$('div.h3');
-      if (titleElement) {
-        const title = await page.evaluate(el => el.textContent.trim(), titleElement);
-        if (title === quest.title) {
-          questFound = true;
-          const claimButton = await container.$('button.btn.btn-primary');
-          if (claimButton) {
-            const buttonText = await page.evaluate(btn => btn.textContent.trim(), claimButton);
-            console.log(`တွေ့တဲ့ ခလုတ်ရဲ့ စာသား: ${buttonText}`);
-            if (buttonText.toLowerCase().includes('claim')) {
-              const isDisabled = await page.evaluate(btn => btn.disabled, claimButton);
-              if (!isDisabled) {
-                await claimButton.click();
-                console.log(`Quest ကို Claim လုပ်လိုက်ပါပြီ: ${quest.title} (ID: ${quest.id})`);
-                await new Promise(resolve => setTimeout(resolve, 30000)); // 30 စက္ကန့် စောင့်ပါ
-              } else {
-                console.log(`Claim ခလုတ်က မနှိပ်လို့မရပါ: ${quest.title} (ID: ${quest.id})`);
-              }
-            } else {
-              console.log(`Claim ခလုတ်မဟုတ်ပါ: ${quest.title} (ID: ${quest.id})`);
-            }
-          } else {
-            console.log(`Claim ခလုတ်ကို ရှာမတွေ့ပါ: ${quest.title} (ID: ${quest.id})`);
-          }
-          break;
-        }
+    // Claim Reward ခလုတ်ကို နှိပ်မယ်
+    if (claimButton && buttonText.toLowerCase().includes('claim')) {
+      const isDisabled = await page.evaluate(btn => btn.disabled, claimButton);
+      if (!isDisabled) {
+        await claimButton.click();
+        console.log(`Quest ကို Claim လုပ်လိုက်ပါပြီ: ${quest.title} (ID: ${quest.id})`);
+        await new Promise(resolve => setTimeout(resolve, 30000)); // 30 စက္ကန့် စောင့်ပါ
+      } else {
+        console.log(`Claim ခလုတ်က မနှိပ်လို့မရပါ: ${quest.title} (ID: ${quest.id})`);
       }
-    }
-
-    if (!questFound) {
-      console.log(`Quest ကို ရှာမတွေ့ပါ: ${quest.title} (ID: ${quest.id})`);
+    } else {
+      console.log(`Claim ခလုတ်ကို ရှာမတွေ့ပါ: ${quest.title} (ID: ${quest.id})`);
     }
   } catch (error) {
     console.error(`Quest ကို လုပ်ဆောင်ရာမှာ အမှားဖြစ်သွားပါတယ် ${quest.title} (ID: ${quest.id}):`, error.message);
