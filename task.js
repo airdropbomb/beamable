@@ -173,51 +173,6 @@ async function waitForSelectorWithRetry(page, selector, maxAttempts = 5, timeout
   }
 }
 
-// Function to check if the claim was successful with retries
-async function checkClaimStatusWithRetry(page, quest, maxAttempts = 3) {
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    console.log(`Attempt ${attempt}: Checking if the claim was successful after reload...`);
-    try {
-      const claimedStatus = await page.evaluate(() => {
-        const divs = document.querySelectorAll('div[class*="text-highlight"]');
-        for (const div of divs) {
-          const text = div.textContent.trim().toLowerCase();
-          if (text === 'reward claimed') {
-            return { text, classes: div.className };
-          }
-        }
-        return null;
-      });
-
-      if (claimedStatus) {
-        console.log(`Successfully claimed the reward for quest: ${quest.title} (ID: ${quest.id})!`);
-        console.log(`Found "Rewards Claimed" with classes: "${claimedStatus.classes}"`);
-        return true;
-      } else {
-        console.log(`Attempt ${attempt}: "Rewards Claimed" text not found.`);
-        if (attempt === maxAttempts) {
-          console.log(`Failed to claim the reward for quest: ${quest.title} (ID: ${quest.id}). "Rewards Claimed" text not found after ${maxAttempts} attempts.`);
-          console.log('Please check if the quest is already claimed or if the page structure has changed.');
-          return false;
-        }
-        console.log('Reloading the page to try again...');
-        await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
-        await new Promise(resolve => setTimeout(resolve, 30000));
-      }
-    } catch (error) {
-      console.log(`Attempt ${attempt}: Error while checking claim status: ${error.message}`);
-      if (attempt === maxAttempts) {
-        console.log(`Failed to check claim status for quest: ${quest.title} (ID: ${quest.id}) after ${maxAttempts} attempts.`);
-        return false;
-      }
-      console.log('Reloading the page to try again...');
-      await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
-      await new Promise(resolve => setTimeout(resolve, 30000));
-    }
-  }
-  return false;
-}
-
 // Function to process each unclaimed quest using Puppeteer
 async function processQuest(token, quest, proxy = null) {
   const browserArgs = [
@@ -287,7 +242,7 @@ async function processQuest(token, quest, proxy = null) {
       } catch (error) {
         console.log(`Attempt ${attempt} failed to find "Claim Reward" button: ${error.message}`);
         if (attempt === 3) {
-          console.log(`Could not find "Claim Reward" button after 3 attempts for quest: ${quest.title} (ID: ${quest.id})`);
+          console.log(`Failed: Could not find "Claim Reward" button after 3 attempts for quest: ${quest.title} (ID: ${quest.id})`);
           return;
         }
         console.log('Reloading the page to try again...');
@@ -303,20 +258,13 @@ async function processQuest(token, quest, proxy = null) {
       if (!isDisabled) {
         await claimButton.click();
         console.log(`Quest ကို Claim လုပ်လိုက်ပါပြီ: ${quest.title} (ID: ${quest.id})`);
+        console.log(`Successfully claimed the reward for quest: ${quest.title} (ID: ${quest.id})!`);
         await new Promise(resolve => setTimeout(resolve, 10000));
-
-        // Claim ပြီးရင် စာမျက်နှာကို Reload လုပ်မယ်
-        console.log('Reloading the page after claiming the reward...');
-        await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
-        await new Promise(resolve => setTimeout(resolve, 30000));
-
-        // အဆင့် ၅: Reload ပြီးမှ Success ဖြစ်မဖြစ် စစ်မယ်
-        await checkClaimStatusWithRetry(page, quest);
       } else {
-        console.log(`Claim ခလုတ်က မနှိပ်လို့မရပါ: ${quest.title} (ID: ${quest.id})`);
+        console.log(`Failed: Claim button is disabled for quest: ${quest.title} (ID: ${quest.id})`);
       }
     } else {
-      console.log(`Claim ခလုတ်ကို ရှာမတွေ့ပါ: ${quest.title} (ID: ${quest.id})`);
+      console.log(`Failed: Could not find "Claim Reward" button or text does not include "claim" for quest: ${quest.title} (ID: ${quest.id})`);
     }
   } catch (error) {
     console.error(`Quest ကို လုပ်ဆောင်ရာမှာ အမှားဖြစ်သွားပါတယ် ${quest.title} (ID: ${quest.id}):`, error.message);
@@ -365,7 +313,7 @@ async function main() {
     const accounts = await readTokens();
     const proxies = await readProxies();
 
-    const maxRuns = 2; // အကောင့်အကုန်လုံး ပြီးရင် နောက်တစ်ကြိမ် ထပ် Run မယ execution ကို ထိန်းချုပ်ဖို့
+    const maxRuns = 2; // အကောင့်အကုန်လုံး ပြီးရင် နောက်တစ်ကြိမ် ထပ် Run မယ်
     for (let run = 1; run <= maxRuns; run++) {
       console.log(`=== Starting Run ${run} of ${maxRuns} ===`);
       await processAllAccounts(accounts, proxies);
