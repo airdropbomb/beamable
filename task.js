@@ -127,6 +127,8 @@ async function waitForSelectorWithRetry(page, selector, maxAttempts = 3, timeout
   }
 }
 
+// ... (အထက်က code တွေ အတူတူပဲ)
+
 // Function to process each unclaimed quest using Puppeteer
 async function processQuest(token, quest) {
   const browserArgs = ['--no-sandbox', '--disable-setuid-sandbox', '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'];
@@ -150,16 +152,15 @@ async function processQuest(token, quest) {
     const questDetailsUrl = `${QUESTS_URL}/${quest.id}`;
     console.log(`Navigating to quest details: ${questDetailsUrl}`);
     await page.goto(questDetailsUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-    await new Promise(resolve => setTimeout(resolve, 5000)); // Page load သေချာဖို့ 5 စက္ကန့် စောင့်တယ်
+    await new Promise(resolve => setTimeout(resolve, 5000));
     const pageContent = await page.content();
     console.log('Quest details page content:', pageContent);
 
     if (!quest.isClaimable) {
       console.log('Quest is not claimable yet. Attempting to complete required steps...');
       console.log('Looking for "Click the Link" button');
-      const clickLinkButton = await waitForSelectorWithRetry(page, 'a.btn-accent'); // Selector ကို a.btn-accent လို့ ပြောင်းတယ်
+      const clickLinkButton = await waitForSelectorWithRetry(page, 'a.btn-accent');
       if (clickLinkButton) {
-        // Verify the text is "Click the Link"
         const buttonText = await page.evaluate(el => el.textContent.trim(), clickLinkButton);
         if (buttonText === 'Click the Link') {
           await clickLinkButton.click();
@@ -178,7 +179,9 @@ async function processQuest(token, quest) {
     console.log('Navigating back to quests page');
     await page.goto(QUESTS_URL, { waitUntil: 'networkidle2', timeout: 30000 });
 
-    await new Promise(resolve => setTimeout(resolve, 10000));
+    await new Promise(resolve => setTimeout(resolve, 20000)); // 20 စက္ကန့် စောင့်တယ်
+    const questsPageContent = await page.content();
+    console.log('Quests page content after navigation:', questsPageContent);
 
     console.log('Checking if quest is now claimable...');
     const questContainerSelector = `div.bg-content a[href*="/questsold/${quest.id}"]`;
@@ -188,7 +191,7 @@ async function processQuest(token, quest) {
       return;
     }
 
-    const claimButtonSelector = 'button.btn-accent:not(:disabled)';
+    const claimButtonSelector = 'button.btn-primary:not(:disabled)'; // Selector ကို btn-primary လို့ ပြောင်းတယ်
     const claimButton = await questContainer.evaluateHandle((container, selector) => {
       return container.closest('div.bg-content').querySelector(selector);
     }, claimButtonSelector);
@@ -207,6 +210,8 @@ async function processQuest(token, quest) {
     await browser.close();
   }
 }
+
+// ... (main function နဲ့ ကျန်တဲ့ code က အတူတူပဲ)
 
 // Main function to run the script
 async function main() {
