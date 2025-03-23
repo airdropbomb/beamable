@@ -203,8 +203,8 @@ async function processQuest(token, quest, proxy = null) {
 
     const questDetailsUrl = `${QUESTS_URL}/${quest.id}`;
     console.log(`Quest စာမျက်နှာကို သွားနေပါတယ်: ${questDetailsUrl}`);
-    await page.goto(questDetailsUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-    await new Promise(resolve => setTimeout(resolve, 10000));
+    await page.goto(questDetailsUrl, { waitUntil: 'networkidle2', timeout: 15000 });
+    await new Promise(resolve => setTimeout(resolve, 5000));
 
     // အဆင့် ၃: "Click the Link" ကို မဖြစ်မနေ ရှာပြီး နှိပ်မယ်
     console.log('Looking for "Click the Link" button');
@@ -219,11 +219,11 @@ async function processQuest(token, quest, proxy = null) {
         console.log('Clicked "Click the Link" button');
         await new Promise(resolve => setTimeout(resolve, 15000));
 
-        // စာမျက်နှာကို ၃ ကြိမ် Reload လုပ်မယ်
-        for (let i = 1; i <= 3; i++) {
-          console.log(`Reloading the current quest page (Attempt ${i}/3)...`);
-          await page.reload({ waitUntil: 'networkidle2', timeout: 8000 });
-          await new Promise(resolve => setTimeout(resolve, 8000));
+        // စာမျက်နှာကို ၂ ကြိမ် Reload လုပ်မယ်
+        for (let i = 1; i <= 2; i++) {
+          console.log(`Reloading the current quest page (Attempt ${i}/2)...`);
+          await page.reload({ waitUntil: 'networkidle2', timeout: 15000 });
+          await new Promise(resolve => setTimeout(resolve, 5000));
         }
       } else {
         console.log(`Found element does not have the text "Click the Link": "${linkButtonText}". Skipping to Claim Reward...`);
@@ -232,8 +232,8 @@ async function processQuest(token, quest, proxy = null) {
       console.log('Could not find "Click the Link" button with selector "a[class*="btn-accent"]"');
     }
 
-    // အဆင့် ၄: Reload ၃ ကြိမ်ပြီးမှ Claim Reward ကို ရှာပြီး နှိပ်မယ်
-    console.log('Looking for "Claim Reward" button after 3 reloads...');
+    // အဆင့် ၄: Reload ၂ ကြိမ်ပြီးမှ Claim Reward ကို ရှာပြီး နှိပ်မယ်
+    console.log('Looking for "Claim Reward" button after 2 reloads...');
     const claimButton = await waitForSelectorWithRetry(page, 'button.btn-primary');
     const buttonText = claimButton ? await page.evaluate(btn => btn.textContent.trim(), claimButton) : null;
 
@@ -244,14 +244,19 @@ async function processQuest(token, quest, proxy = null) {
         console.log(`Quest ကို Claim လုပ်လိုက်ပါပြီ: ${quest.title} (ID: ${quest.id})`);
         await new Promise(resolve => setTimeout(resolve, 10000));
 
-        // အဆင့် ၅: Claim ပြီးရင် Success ဖြစ်မဖြစ် စစ်မယ်
-        console.log('Checking if the claim was successful...');
+        // Claim ပြီးရင် စာမျက်နှာကို Reload လုပ်မယ်
+        console.log('Reloading the page after claiming the reward...');
+        await page.reload({ waitUntil: 'networkidle2', timeout: 10000 });
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
+        // အဆင့် ၅: Reload ပြီးမှ Success ဖြစ်မဖြစ် စစ်မယ်
+        console.log('Checking if the claim was successful after reload...');
         try {
           const claimedStatus = await page.evaluate(() => {
             const divs = document.querySelectorAll('div[class*="text-highlight"]');
             for (const div of divs) {
               const text = div.textContent.trim().toLowerCase();
-              if (text === 'reward claimed') {
+              if (text === 'Rewards Claimed') {
                 return { text, classes: div.className };
               }
             }
@@ -262,7 +267,7 @@ async function processQuest(token, quest, proxy = null) {
             console.log(`Successfully claimed the reward for quest: ${quest.title} (ID: ${quest.id})!`);
             console.log(`Found "Reward Claimed" with classes: "${claimedStatus.classes}"`);
           } else {
-            console.log(`Failed to claim the reward for quest: ${quest.title} (ID: ${quest.id}). "Reward Claimed" text not found.`);
+            console.log(`Failed to claim the reward for quest: ${quest.title} (ID: ${quest.id}). "Rewards Claimed" text not found after reload.`);
             console.log('Please check if the quest is already claimed or if the page structure has changed.');
           }
         } catch (error) {
@@ -314,7 +319,7 @@ async function main() {
         }
       }
 
-      console.log('Waiting 15 seconds before processing the next account...');
+      console.log('Waiting 10 seconds before processing the next account...');
       await new Promise(resolve => setTimeout(resolve, 10000));
     }
 
