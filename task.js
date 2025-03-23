@@ -222,8 +222,8 @@ async function processQuest(token, quest, proxy = null) {
         // စာမျက်နှာကို ၃ ကြိမ် Reload လုပ်မယ်
         for (let i = 1; i <= 3; i++) {
           console.log(`Reloading the current quest page (Attempt ${i}/3)...`);
-          await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
-          await new Promise(resolve => setTimeout(resolve, 15000));
+          await page.reload({ waitUntil: 'networkidle2', timeout: 8000 });
+          await new Promise(resolve => setTimeout(resolve, 8000));
         }
       } else {
         console.log(`Found element does not have the text "Click the Link": "${linkButtonText}". Skipping to Claim Reward...`);
@@ -242,7 +242,7 @@ async function processQuest(token, quest, proxy = null) {
       if (!isDisabled) {
         await claimButton.click();
         console.log(`Quest ကို Claim လုပ်လိုက်ပါပြီ: ${quest.title} (ID: ${quest.id})`);
-        await new Promise(resolve => setTimeout(resolve, 30000));
+        await new Promise(resolve => setTimeout(resolve, 10000));
 
         // အဆင့် ၅: Claim ပြီးရင် Success ဖြစ်မဖြစ် စစ်မယ်
         console.log('Checking if the claim was successful...');
@@ -315,7 +315,7 @@ async function main() {
       }
 
       console.log('Waiting 15 seconds before processing the next account...');
-      await new Promise(resolve => setTimeout(resolve, 15000));
+      await new Promise(resolve => setTimeout(resolve, 10000));
     }
 
     console.log('All accounts processed!');
