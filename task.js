@@ -26,12 +26,10 @@ async function readToken() {
 }
 
 // Function to fetch unclaimed quests using Puppeteer
-async function fetchUnclaimedQuests(token) { // Function အနေနဲ့ ပြန်သတ်မှတ်တယ်
-  const browserArgs = ['--no-sandbox', '--disable-setuid-sandbox'];
+async function fetchUnclaimedQuests(token) {
   const browser = await puppeteer.launch({
     headless: true,
-    executablePath: '/usr/bin/chromium-browser', // Contabo VPS မှာ Chromium ရဲ့ path
-    args: browserArgs,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
   const page = await browser.newPage();
 
@@ -127,8 +125,6 @@ async function waitForSelectorWithRetry(page, selector, maxAttempts = 3, timeout
   }
 }
 
-// ... (အထက်က code တွေ အတူတူပဲ)
-
 // Function to process each unclaimed quest using Puppeteer
 async function processQuest(token, quest) {
   const browserArgs = ['--no-sandbox', '--disable-setuid-sandbox', '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'];
@@ -179,59 +175,30 @@ async function processQuest(token, quest) {
     console.log('Navigating back to quests page');
     await page.goto(QUESTS_URL, { waitUntil: 'networkidle2', timeout: 30000 });
 
-    await new Promise(resolve => setTimeout(resolve, 30000)); // 30 စက္ကန့် စောင့်တယ်
+    await new Promise(resolve => setTimeout(resolve, 30000));
     const questsPageContent = await page.content();
     console.log('Quests page content after navigation:', questsPageContent);
 
+    // Use the old script's logic for claiming the reward
     console.log('Checking if quest is now claimable...');
-    // Try to find all quest containers and loop through them
-    const allQuestContainers = await page.$$('div.bg-content');
-    console.log(`Found ${allQuestContainers.length} quest containers with class "bg-content"`);
-    
-    let claimButtonFound = false;
-    for (const container of allQuestContainers) {
-      // Check if this container is for the current quest
-      const hrefElement = await container.$('a[href*="/questsold/"]');
-      if (hrefElement) {
-        const href = await page.evaluate(el => el.getAttribute('href'), hrefElement);
-        if (href && href.includes(`/questsold/${quest.id}`)) {
-          console.log(`Found matching quest container for ID ${quest.id}`);
-          
-          // Try to find the "Claim Reward" button
-          const claimButton = await container.$('button.btn-primary.opacity-100');
-          if (claimButton) {
-            const buttonText = await page.evaluate(el => el.textContent.trim(), claimButton);
-            if (buttonText === 'Claim Reward') {
-              console.log('Found "Claim Reward" button');
-              await claimButton.click();
-              console.log(`Claimed quest: ${quest.title} (ID: ${quest.id})`);
-              await new Promise(resolve => setTimeout(resolve, 10000));
-              claimButtonFound = true;
-              break;
-            } else {
-              console.log('Found button but text does not match "Claim Reward":', buttonText);
-            }
-          } else {
-            console.log('Could not find "Claim Reward" button in this container');
-            // Try alternative selector
-            const alternativeClaimButton = await container.$('button[class*="btn-primary"]');
-            if (alternativeClaimButton) {
-              const altButtonText = await page.evaluate(el => el.textContent.trim(), alternativeClaimButton);
-              if (altButtonText === 'Claim Reward') {
-                console.log('Found "Claim Reward" button with alternative selector');
-                await alternativeClaimButton.click();
-                console.log(`Claimed quest with alternative selector: ${quest.title} (ID: ${quest.id})`);
-                await new Promise(resolve => setTimeout(resolve, 10000));
-                claimButtonFound = true;
-                break;
-              }
-            }
-          }
-        }
-      }
+    const questContainerSelector = `div.bg-content a[href*="/questsold/${quest.id}"]`;
+    const questContainer = await page.$(questContainerSelector);
+    if (!questContainer) {
+      console.log(`Could not find quest container for ID ${quest.id}`);
+      return;
     }
 
-    if (!claimButtonFound) {
+    const claimButtonSelector = 'button.btn-accent:not(:disabled)';
+    const claimButton = await questContainer.evaluateHandle((container, selector) => {
+      return container.closest('div.bg-content').querySelector(selector);
+    }, claimButtonSelector);
+
+    if (claimButton.asElement()) {
+      console.log('Found "Claim Reward" button');
+      await claimButton.click();
+      console.log(`Claimed quest: ${quest.title} (ID: ${quest.id})`);
+      await new Promise(resolve => setTimeout(resolve, 10000));
+    } else {
       console.log(`Quest "${quest.title}" (ID: ${quest.id}) is still not claimable or already claimed.`);
     }
   } catch (error) {
@@ -240,7 +207,6 @@ async function processQuest(token, quest) {
     await browser.close();
   }
 }
-// ... (main function နဲ့ ကျန်တဲ့ code က အတူတူပဲ)
 
 // Main function to run the script
 async function main() {
