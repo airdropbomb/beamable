@@ -129,7 +129,7 @@ async function waitForSelectorWithRetry(page, selector, maxAttempts = 3, timeout
 
 // Function to process each unclaimed quest using Puppeteer
 async function processQuest(token, quest) {
-  const browserArgs = ['--no-sandbox', '--disable-setuid-sandbox'];
+  const browserArgs = ['--no-sandbox', '--disable-setuid-sandbox', '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'];
   const browser = await puppeteer.launch({
     headless: true,
     executablePath: '/usr/bin/chromium-browser',
@@ -150,17 +150,26 @@ async function processQuest(token, quest) {
     const questDetailsUrl = `${QUESTS_URL}/${quest.id}`;
     console.log(`Navigating to quest details: ${questDetailsUrl}`);
     await page.goto(questDetailsUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+    await new Promise(resolve => setTimeout(resolve, 5000)); // Page load သေချာဖို့ 5 စက္ကန့် စောင့်တယ်
+    const pageContent = await page.content();
+    console.log('Quest details page content:', pageContent);
 
     if (!quest.isClaimable) {
       console.log('Quest is not claimable yet. Attempting to complete required steps...');
       console.log('Looking for "Click the Link" button');
-      const clickLinkButton = await waitForSelectorWithRetry(page, 'button.btn-accent'); // Selector ကို btn-accent လို့ ပြောင်းတယ်
+      const clickLinkButton = await waitForSelectorWithRetry(page, 'a.btn-accent'); // Selector ကို a.btn-accent လို့ ပြောင်းတယ်
       if (clickLinkButton) {
-        await clickLinkButton.click();
-        console.log('Clicked "Click the Link" button');
-        const contentAfterClick = await page.content();
-        console.log('Page content after clicking:', contentAfterClick);
-        await new Promise(resolve => setTimeout(resolve, 10000)); // 10 စက္ကန့် စောင့်တယ်
+        // Verify the text is "Click the Link"
+        const buttonText = await page.evaluate(el => el.textContent.trim(), clickLinkButton);
+        if (buttonText === 'Click the Link') {
+          await clickLinkButton.click();
+          console.log('Clicked "Click the Link" button');
+          const contentAfterClick = await page.content();
+          console.log('Page content after clicking:', contentAfterClick);
+          await new Promise(resolve => setTimeout(resolve, 10000));
+        } else {
+          console.log('Found element does not have the text "Click the Link":', buttonText);
+        }
       } else {
         console.log('Could not find "Click the Link" button');
       }
@@ -169,7 +178,7 @@ async function processQuest(token, quest) {
     console.log('Navigating back to quests page');
     await page.goto(QUESTS_URL, { waitUntil: 'networkidle2', timeout: 30000 });
 
-    await new Promise(resolve => setTimeout(resolve, 10000)); // 10 စက္ကန့် စောင့်တယ်
+    await new Promise(resolve => setTimeout(resolve, 10000));
 
     console.log('Checking if quest is now claimable...');
     const questContainerSelector = `div.bg-content a[href*="/questsold/${quest.id}"]`;
