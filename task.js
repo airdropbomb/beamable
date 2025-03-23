@@ -228,12 +228,14 @@ async function processQuest(token, quest, proxy = null) {
         console.log('Page content after clicking:', contentAfterClick);
         await new Promise(resolve => setTimeout(resolve, 15000));
 
-        // လက်ရှိ Quest စာမျက်နှာကို Reload လုပ်မယ်
-        console.log('Reloading the current quest page...');
-        await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
-        await new Promise(resolve => setTimeout(resolve, 15000));
-        const reloadedPageContent = await page.content();
-        console.log('Page content after reload:', reloadedPageContent);
+        // စာမျက်နှာကို ၃ ကြိမ် Reload လုပ်မယ်
+        for (let i = 1; i <= 3; i++) {
+          console.log(`Reloading the current quest page (Attempt ${i}/3)...`);
+          await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
+          await new Promise(resolve => setTimeout(resolve, 15000));
+          const reloadedPageContent = await page.content();
+          console.log(`Page content after reload ${i}:`, reloadedPageContent);
+        }
       } else {
         console.log('Found element does not have the text "Click the Link":', linkButtonText);
       }
@@ -249,7 +251,8 @@ async function processQuest(token, quest, proxy = null) {
       console.log('All <a> elements on the page:', allLinks);
     }
 
-    // အဆင့် ၄: လက်ရှိ Quest စာမျက်နှာမှာပဲ Claim Reward ကို ရှာပြီး နှိပ်မယ်
+    // အဆင့် ၄: Reload ၃ ကြိမ်ပြီးမှ Claim Reward ကို ရှာပြီး နှိပ်မယ်
+    console.log('Looking for "Claim Reward" button after 3 reloads...');
     const claimButton = await waitForSelectorWithRetry(page, 'button.btn-primary');
     const buttonText = claimButton ? await page.evaluate(btn => btn.textContent.trim(), claimButton) : null;
 
@@ -264,6 +267,14 @@ async function processQuest(token, quest, proxy = null) {
       }
     } else {
       console.log(`Claim ခလုတ်ကို ရှာမတွေ့ပါ: ${quest.title} (ID: ${quest.id})`);
+      const allButtons = await page.evaluate(() => {
+        const buttons = document.querySelectorAll('button');
+        return Array.from(buttons).map(button => ({
+          text: button.textContent.trim(),
+          classes: button.className,
+        }));
+      });
+      console.log('All <button> elements on the page:', allButtons);
     }
   } catch (error) {
     console.error(`Quest ကို လုပ်ဆောင်ရာမှာ အမှားဖြစ်သွားပါတယ် ${quest.title} (ID: ${quest.id}):`, error.message);
