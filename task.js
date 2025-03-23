@@ -128,11 +128,11 @@ async function waitForSelectorWithRetry(page, selector, maxAttempts = 3, timeout
 }
 
 // Function to process each unclaimed quest using Puppeteer
-async function processQuest(token, quest) { // Function အနေနဲ့ ပြန်သတ်မှတ်တယ်
+async function processQuest(token, quest) {
   const browserArgs = ['--no-sandbox', '--disable-setuid-sandbox'];
   const browser = await puppeteer.launch({
     headless: true,
-    executablePath: '/usr/bin/chromium-browser', // Contabo VPS မှာ Chromium ရဲ့ path
+    executablePath: '/usr/bin/chromium-browser',
     args: browserArgs,
   });
   const page = await browser.newPage();
@@ -154,11 +154,13 @@ async function processQuest(token, quest) { // Function အနေနဲ့ ပ�
     if (!quest.isClaimable) {
       console.log('Quest is not claimable yet. Attempting to complete required steps...');
       console.log('Looking for "Click the Link" button');
-      const clickLinkButton = await waitForSelectorWithRetry(page, 'button.btn-primary');
+      const clickLinkButton = await waitForSelectorWithRetry(page, 'button.btn-accent'); // Selector ကို btn-accent လို့ ပြောင်းတယ်
       if (clickLinkButton) {
         await clickLinkButton.click();
         console.log('Clicked "Click the Link" button');
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        const contentAfterClick = await page.content();
+        console.log('Page content after clicking:', contentAfterClick);
+        await new Promise(resolve => setTimeout(resolve, 10000)); // 10 စက္ကန့် စောင့်တယ်
       } else {
         console.log('Could not find "Click the Link" button');
       }
@@ -167,7 +169,7 @@ async function processQuest(token, quest) { // Function အနေနဲ့ ပ�
     console.log('Navigating back to quests page');
     await page.goto(QUESTS_URL, { waitUntil: 'networkidle2', timeout: 30000 });
 
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await new Promise(resolve => setTimeout(resolve, 10000)); // 10 စက္ကန့် စောင့်တယ်
 
     console.log('Checking if quest is now claimable...');
     const questContainerSelector = `div.bg-content a[href*="/questsold/${quest.id}"]`;
