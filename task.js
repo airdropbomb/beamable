@@ -179,29 +179,59 @@ async function processQuest(token, quest) {
     console.log('Navigating back to quests page');
     await page.goto(QUESTS_URL, { waitUntil: 'networkidle2', timeout: 30000 });
 
-    await new Promise(resolve => setTimeout(resolve, 20000)); // 20 စက္ကန့် စောင့်တယ်
+    await new Promise(resolve => setTimeout(resolve, 30000)); // 30 စက္ကန့် စောင့်တယ်
     const questsPageContent = await page.content();
     console.log('Quests page content after navigation:', questsPageContent);
 
     console.log('Checking if quest is now claimable...');
-    const questContainerSelector = `div.bg-content a[href*="/questsold/${quest.id}"]`;
-    const questContainer = await page.$(questContainerSelector);
-    if (!questContainer) {
-      console.log(`Could not find quest container for ID ${quest.id}`);
-      return;
+    // Try to find all quest containers and loop through them
+    const allQuestContainers = await page.$$('div.bg-content');
+    console.log(`Found ${allQuestContainers.length} quest containers with class "bg-content"`);
+    
+    let claimButtonFound = false;
+    for (const container of allQuestContainers) {
+      // Check if this container is for the current quest
+      const hrefElement = await container.$('a[href*="/questsold/"]');
+      if (hrefElement) {
+        const href = await page.evaluate(el => el.getAttribute('href'), hrefElement);
+        if (href && href.includes(`/questsold/${quest.id}`)) {
+          console.log(`Found matching quest container for ID ${quest.id}`);
+          
+          // Try to find the "Claim Reward" button
+          const claimButton = await container.$('button.btn-primary.opacity-100');
+          if (claimButton) {
+            const buttonText = await page.evaluate(el => el.textContent.trim(), claimButton);
+            if (buttonText === 'Claim Reward') {
+              console.log('Found "Claim Reward" button');
+              await claimButton.click();
+              console.log(`Claimed quest: ${quest.title} (ID: ${quest.id})`);
+              await new Promise(resolve => setTimeout(resolve, 10000));
+              claimButtonFound = true;
+              break;
+            } else {
+              console.log('Found button but text does not match "Claim Reward":', buttonText);
+            }
+          } else {
+            console.log('Could not find "Claim Reward" button in this container');
+            // Try alternative selector
+            const alternativeClaimButton = await container.$('button[class*="btn-primary"]');
+            if (alternativeClaimButton) {
+              const altButtonText = await page.evaluate(el => el.textContent.trim(), alternativeClaimButton);
+              if (altButtonText === 'Claim Reward') {
+                console.log('Found "Claim Reward" button with alternative selector');
+                await alternativeClaimButton.click();
+                console.log(`Claimed quest with alternative selector: ${quest.title} (ID: ${quest.id})`);
+                await new Promise(resolve => setTimeout(resolve, 10000));
+                claimButtonFound = true;
+                break;
+              }
+            }
+          }
+        }
+      }
     }
 
-    const claimButtonSelector = 'button.btn-primary:not(:disabled)'; // Selector ကို btn-primary လို့ ပြောင်းတယ်
-    const claimButton = await questContainer.evaluateHandle((container, selector) => {
-      return container.closest('div.bg-content').querySelector(selector);
-    }, claimButtonSelector);
-
-    if (claimButton.asElement()) {
-      console.log('Found "Claim Reward" button');
-      await claimButton.click();
-      console.log(`Claimed quest: ${quest.title} (ID: ${quest.id})`);
-      await new Promise(resolve => setTimeout(resolve, 10000));
-    } else {
+    if (!claimButtonFound) {
       console.log(`Quest "${quest.title}" (ID: ${quest.id}) is still not claimable or already claimed.`);
     }
   } catch (error) {
@@ -210,7 +240,6 @@ async function processQuest(token, quest) {
     await browser.close();
   }
 }
-
 // ... (main function နဲ့ ကျန်တဲ့ code က အတူတူပဲ)
 
 // Main function to run the script
