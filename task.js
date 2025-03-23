@@ -104,13 +104,8 @@ async function fetchUnclaimedQuests(token, proxy = null) {
     console.log('Current URL after navigation:', currentUrl);
     if (currentUrl.includes('/onboarding/login')) {
       console.error('Redirected to login page. Token may be invalid or expired.');
-      const pageContent = await page.content();
-      console.log('Login page content:', pageContent);
       throw new Error('Authentication failed: Redirected to login page');
     }
-
-    const pageContent = await page.content();
-    console.log('Quests page content:', pageContent);
 
     const quests = await page.evaluate(() => {
       const questElements = document.querySelectorAll('div.bg-content a[href*="/modules/questsold"]');
@@ -210,8 +205,6 @@ async function processQuest(token, quest, proxy = null) {
     console.log(`Quest စာမျက်နှာကို သွားနေပါတယ်: ${questDetailsUrl}`);
     await page.goto(questDetailsUrl, { waitUntil: 'networkidle2', timeout: 30000 });
     await new Promise(resolve => setTimeout(resolve, 10000));
-    const pageContent = await page.content();
-    console.log('Quest details page content:', pageContent);
 
     // အဆင့် ၃: "Click the Link" ကို မဖြစ်မနေ ရှာပြီး နှိပ်မယ်
     console.log('Looking for "Click the Link" button');
@@ -224,8 +217,6 @@ async function processQuest(token, quest, proxy = null) {
       if (linkButtonText.toLowerCase().includes('click the link')) {
         await clickLinkButton.click();
         console.log('Clicked "Click the Link" button');
-        const contentAfterClick = await page.content();
-        console.log('Page content after clicking:', contentAfterClick);
         await new Promise(resolve => setTimeout(resolve, 15000));
 
         // စာမျက်နှာကို ၃ ကြိမ် Reload လုပ်မယ်
@@ -233,22 +224,12 @@ async function processQuest(token, quest, proxy = null) {
           console.log(`Reloading the current quest page (Attempt ${i}/3)...`);
           await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
           await new Promise(resolve => setTimeout(resolve, 15000));
-          const reloadedPageContent = await page.content();
-          console.log(`Page content after reload ${i}:`, reloadedPageContent);
         }
       } else {
         console.log(`Found element does not have the text "Click the Link": "${linkButtonText}". Skipping to Claim Reward...`);
       }
     } else {
       console.log('Could not find "Click the Link" button with selector "a[class*="btn-accent"]"');
-      const allLinks = await page.evaluate(() => {
-        const links = document.querySelectorAll('a');
-        return Array.from(links).map(link => ({
-          text: link.textContent.trim(),
-          classes: link.className,
-        }));
-      });
-      console.log('All <a> elements on the page:', allLinks);
     }
 
     // အဆင့် ၄: Reload ၃ ကြိမ်ပြီးမှ Claim Reward ကို ရှာပြီး နှိပ်မယ်
@@ -282,41 +263,16 @@ async function processQuest(token, quest, proxy = null) {
             console.log(`Found "Reward Claimed" with classes: "${claimedStatus.classes}"`);
           } else {
             console.log(`Failed to claim the reward for quest: ${quest.title} (ID: ${quest.id}). "Reward Claimed" text not found.`);
-            const allDivs = await page.evaluate(() => {
-              const divs = document.querySelectorAll('div');
-              return Array.from(divs).map(div => ({
-                text: div.textContent.trim(),
-                classes: div.className,
-              }));
-            });
-            console.log('All <div> elements on the page:', allDivs);
-            const pageContentAfterClaim = await page.content();
-            console.log('Page content after attempting to claim:', pageContentAfterClaim);
+            console.log('Please check if the quest is already claimed or if the page structure has changed.');
           }
         } catch (error) {
           console.log(`Error while checking claim status for quest: ${quest.title} (ID: ${quest.id}): ${error.message}`);
-          const allDivs = await page.evaluate(() => {
-            const divs = document.querySelectorAll('div');
-            return Array.from(divs).map(div => ({
-              text: div.textContent.trim(),
-              classes: div.className,
-            }));
-          });
-          console.log('All <div> elements on the page:', allDivs);
         }
       } else {
         console.log(`Claim ခလုတ်က မနှိပ်လို့မရပါ: ${quest.title} (ID: ${quest.id})`);
       }
     } else {
       console.log(`Claim ခလုတ်ကို ရှာမတွေ့ပါ: ${quest.title} (ID: ${quest.id})`);
-      const allButtons = await page.evaluate(() => {
-        const buttons = document.querySelectorAll('button');
-        return Array.from(buttons).map(button => ({
-          text: button.textContent.trim(),
-          classes: button.className,
-        }));
-      });
-      console.log('All <button> elements on the page:', allButtons);
     }
   } catch (error) {
     console.error(`Quest ကို လုပ်ဆောင်ရာမှာ အမှားဖြစ်သွားပါတယ် ${quest.title} (ID: ${quest.id}):`, error.message);
