@@ -82,6 +82,7 @@ async function fetchUnclaimedQuests(token, proxy = null) {
     headless: true,
     executablePath: '/usr/bin/chromium-browser',
     args: browserArgs,
+    protocolTimeout: 60000, // Timeout ကို 60 စက္ကန့်လို့ သတ်မှတ်ထားပါတယ်
   });
   const page = await browser.newPage();
 
@@ -96,7 +97,7 @@ async function fetchUnclaimedQuests(token, proxy = null) {
     });
 
     console.log('Navigating to quests page:', QUESTS_URL);
-    await page.goto(QUESTS_URL, { waitUntil: 'networkidle2', timeout: 30000 });
+    await page.goto(QUESTS_URL, { waitUntil: 'networkidle2', timeout: 60000 });
 
     await new Promise(resolve => setTimeout(resolve, 10000));
 
@@ -155,7 +156,7 @@ async function fetchUnclaimedQuests(token, proxy = null) {
 }
 
 // Function to wait for an element with retries
-async function waitForSelectorWithRetry(page, selector, maxAttempts = 3, timeout = 30000) {
+async function waitForSelectorWithRetry(page, selector, maxAttempts = 3, timeout = 60000) {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       console.log(`Attempt ${attempt}: Waiting for selector "${selector}"`);
@@ -188,6 +189,7 @@ async function processQuest(token, quest, proxy = null) {
     headless: true,
     executablePath: '/usr/bin/chromium-browser',
     args: browserArgs,
+    protocolTimeout: 60000, // Timeout ကို 60 စက္ကန့်လို့ သတ်မှတ်ထားပါတယ်
   });
   const page = await browser.newPage();
 
@@ -203,8 +205,8 @@ async function processQuest(token, quest, proxy = null) {
 
     const questDetailsUrl = `${QUESTS_URL}/${quest.id}`;
     console.log(`Quest စာမျက်နှာကို သွားနေပါတယ်: ${questDetailsUrl}`);
-    await page.goto(questDetailsUrl, { waitUntil: 'networkidle2', timeout: 15000 });
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await page.goto(questDetailsUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+    await new Promise(resolve => setTimeout(resolve, 10000));
 
     // အဆင့် ၃: "Click the Link" ကို မဖြစ်မနေ ရှာပြီး နှိပ်မယ်
     console.log('Looking for "Click the Link" button');
@@ -222,8 +224,8 @@ async function processQuest(token, quest, proxy = null) {
         // စာမျက်နှာကို ၂ ကြိမ် Reload လုပ်မယ်
         for (let i = 1; i <= 2; i++) {
           console.log(`Reloading the current quest page (Attempt ${i}/2)...`);
-          await page.reload({ waitUntil: 'networkidle2', timeout: 15000 });
-          await new Promise(resolve => setTimeout(resolve, 5000));
+          await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
+          await new Promise(resolve => setTimeout(resolve, 30000)); // 30 စက္ကန့်စောင့်မယ်
         }
       } else {
         console.log(`Found element does not have the text "Click the Link": "${linkButtonText}". Skipping to Claim Reward...`);
@@ -246,8 +248,8 @@ async function processQuest(token, quest, proxy = null) {
 
         // Claim ပြီးရင် စာမျက်နှာကို Reload လုပ်မယ်
         console.log('Reloading the page after claiming the reward...');
-        await page.reload({ waitUntil: 'networkidle2', timeout: 10000 });
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
+        await new Promise(resolve => setTimeout(resolve, 30000)); // 30 စက္ကန့်စောင့်မယ်
 
         // အဆင့် ၅: Reload ပြီးမှ Success ဖြစ်မဖြစ် စစ်မယ်
         console.log('Checking if the claim was successful after reload...');
@@ -256,7 +258,7 @@ async function processQuest(token, quest, proxy = null) {
             const divs = document.querySelectorAll('div[class*="text-highlight"]');
             for (const div of divs) {
               const text = div.textContent.trim().toLowerCase();
-              if (text === 'Rewards Claimed') {
+              if (text === 'reward claimed') {
                 return { text, classes: div.className };
               }
             }
@@ -267,7 +269,7 @@ async function processQuest(token, quest, proxy = null) {
             console.log(`Successfully claimed the reward for quest: ${quest.title} (ID: ${quest.id})!`);
             console.log(`Found "Reward Claimed" with classes: "${claimedStatus.classes}"`);
           } else {
-            console.log(`Failed to claim the reward for quest: ${quest.title} (ID: ${quest.id}). "Rewards Claimed" text not found after reload.`);
+            console.log(`Failed to claim the reward for quest: ${quest.title} (ID: ${quest.id}). "Reward Claimed" text not found after reload.`);
             console.log('Please check if the quest is already claimed or if the page structure has changed.');
           }
         } catch (error) {
@@ -319,8 +321,8 @@ async function main() {
         }
       }
 
-      console.log('Waiting 10 seconds before processing the next account...');
-      await new Promise(resolve => setTimeout(resolve, 10000));
+      console.log('Waiting 15 seconds before processing the next account...');
+      await new Promise(resolve => setTimeout(resolve, 15000));
     }
 
     console.log('All accounts processed!');
