@@ -237,7 +237,7 @@ async function processQuest(token, quest, proxy = null) {
           console.log(`Page content after reload ${i}:`, reloadedPageContent);
         }
       } else {
-        console.log('Found element does not have the text "Click the Link":', linkButtonText);
+        console.log(`Found element does not have the text "Click the Link": "${linkButtonText}". Skipping to Claim Reward...`);
       }
     } else {
       console.log('Could not find "Click the Link" button with selector "a[class*="btn-accent"]"');
@@ -265,15 +265,44 @@ async function processQuest(token, quest, proxy = null) {
 
         // အဆင့် ၅: Claim ပြီးရင် Success ဖြစ်မဖြစ် စစ်မယ်
         console.log('Checking if the claim was successful...');
-        const claimedElement = await waitForSelectorWithRetry(page, 'span.p3');
-        const claimedText = claimedElement ? await page.evaluate(el => el.textContent.trim().toLowerCase(), claimedElement) : null;
+        try {
+          const claimedStatus = await page.evaluate(() => {
+            const divs = document.querySelectorAll('div[class*="text-highlight"]');
+            for (const div of divs) {
+              const text = div.textContent.trim().toLowerCase();
+              if (text === 'reward claimed') {
+                return { text, classes: div.className };
+              }
+            }
+            return null;
+          });
 
-        if (claimedText && claimedText === 'claimed') {
-          console.log(`Successfully claimed the reward for quest: ${quest.title} (ID: ${quest.id})!`);
-        } else {
-          console.log(`Failed to claim the reward for quest: ${quest.title} (ID: ${quest.id}).`);
-          const pageContentAfterClaim = await page.content();
-          console.log('Page content after attempting to claim:', pageContentAfterClaim);
+          if (claimedStatus) {
+            console.log(`Successfully claimed the reward for quest: ${quest.title} (ID: ${quest.id})!`);
+            console.log(`Found "Reward Claimed" with classes: "${claimedStatus.classes}"`);
+          } else {
+            console.log(`Failed to claim the reward for quest: ${quest.title} (ID: ${quest.id}). "Reward Claimed" text not found.`);
+            const allDivs = await page.evaluate(() => {
+              const divs = document.querySelectorAll('div');
+              return Array.from(divs).map(div => ({
+                text: div.textContent.trim(),
+                classes: div.className,
+              }));
+            });
+            console.log('All <div> elements on the page:', allDivs);
+            const pageContentAfterClaim = await page.content();
+            console.log('Page content after attempting to claim:', pageContentAfterClaim);
+          }
+        } catch (error) {
+          console.log(`Error while checking claim status for quest: ${quest.title} (ID: ${quest.id}): ${error.message}`);
+          const allDivs = await page.evaluate(() => {
+            const divs = document.querySelectorAll('div');
+            return Array.from(divs).map(div => ({
+              text: div.textContent.trim(),
+              classes: div.className,
+            }));
+          });
+          console.log('All <div> elements on the page:', allDivs);
         }
       } else {
         console.log(`Claim ခလုတ်က မနှိပ်လို့မရပါ: ${quest.title} (ID: ${quest.id})`);
