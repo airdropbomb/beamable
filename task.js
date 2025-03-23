@@ -128,12 +128,10 @@ async function waitForSelectorWithRetry(page, selector, maxAttempts = 3, timeout
 }
 
 // Function to process each unclaimed quest using Puppeteer
-async function processQuest(token, quest) { // Function အနေနဲ့ ပြန်သတ်မှတ်တယ်
-  const browserArgs = ['--no-sandbox', '--disable-setuid-sandbox'];
+async function processQuest(token, quest) {
   const browser = await puppeteer.launch({
     headless: true,
-    executablePath: '/usr/bin/chromium-browser', // Contabo VPS မှာ Chromium ရဲ့ path
-    args: browserArgs,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
   const page = await browser.newPage();
 
@@ -148,7 +146,7 @@ async function processQuest(token, quest) { // Function အနေနဲ့ ပ�
     });
 
     const questDetailsUrl = `${QUESTS_URL}/${quest.id}`;
-    console.log(`Navigating to quest details: ${questDetailsUrl}`);
+    console.log(`Quest စာမျက်နှာကို သွားနေပါတယ်: ${questDetailsUrl}`);
     await page.goto(questDetailsUrl, { waitUntil: 'networkidle2', timeout: 30000 });
     await new Promise(resolve => setTimeout(resolve, 5000));
     const pageContent = await page.content();
@@ -181,30 +179,46 @@ async function processQuest(token, quest) { // Function အနေနဲ့ ပ�
     const questsPageContent = await page.content();
     console.log('Quests page content after navigation:', questsPageContent);
 
-    // Use the old script's logic for claiming the reward
     console.log('Checking if quest is now claimable...');
-    const questContainerSelector = `div.bg-content a[href*="/questsold/${quest.id}"]`;
-    const questContainer = await page.$(questContainerSelector);
-    if (!questContainer) {
-      console.log(`Could not find quest container for ID ${quest.id}`);
-      return;
+    const questContainerSelector = `div[class*="flex-col gap-4 p-4 justify-between"]`;
+    const questContainers = await page.$$(questContainerSelector);
+
+    let questFound = false;
+    for (const container of questContainers) {
+      const titleElement = await container.$('div.h3');
+      if (titleElement) {
+        const title = await page.evaluate(el => el.textContent.trim(), titleElement);
+        if (title === quest.title) {
+          questFound = true;
+          const claimButton = await container.$('button.btn.btn-primary');
+          if (claimButton) {
+            const buttonText = await page.evaluate(btn => btn.textContent.trim(), claimButton);
+            console.log(`တွေ့တဲ့ ခလုတ်ရဲ့ စာသား: ${buttonText}`);
+            if (buttonText.toLowerCase().includes('claim')) {
+              const isDisabled = await page.evaluate(btn => btn.disabled, claimButton);
+              if (!isDisabled) {
+                await claimButton.click();
+                console.log(`Quest ကို Claim လုပ်လိုက်ပါပြီ: ${quest.title} (ID: ${quest.id})`);
+                await new Promise(resolve => setTimeout(resolve, 30000)); // 30 စက္ကန့် စောင့်ပါ
+              } else {
+                console.log(`Claim ခလုတ်က မနှိပ်လို့မရပါ: ${quest.title} (ID: ${quest.id})`);
+              }
+            } else {
+              console.log(`Claim ခလုတ်မဟုတ်ပါ: ${quest.title} (ID: ${quest.id})`);
+            }
+          } else {
+            console.log(`Claim ခလုတ်ကို ရှာမတွေ့ပါ: ${quest.title} (ID: ${quest.id})`);
+          }
+          break;
+        }
+      }
     }
 
-    const claimButtonSelector = 'button.btn-accent:not(:disabled)';
-    const claimButton = await questContainer.evaluateHandle((container, selector) => {
-      return container.closest('div.bg-content').querySelector(selector);
-    }, claimButtonSelector);
-
-    if (claimButton.asElement()) {
-      console.log('Found "Claim Reward" button');
-      await claimButton.click();
-      console.log(`Claimed quest: ${quest.title} (ID: ${quest.id})`);
-      await new Promise(resolve => setTimeout(resolve, 10000));
-    } else {
-      console.log(`Quest "${quest.title}" (ID: ${quest.id}) is still not claimable or already claimed.`);
+    if (!questFound) {
+      console.log(`Quest ကို ရှာမတွေ့ပါ: ${quest.title} (ID: ${quest.id})`);
     }
   } catch (error) {
-    console.error(`Error processing quest ${quest.title} (ID: ${quest.id}):`, error.message);
+    console.error(`Quest ကို လုပ်ဆောင်ရာမှာ အမှားဖြစ်သွားပါတယ် ${quest.title} (ID: ${quest.id}):`, error.message);
   } finally {
     await browser.close();
   }
