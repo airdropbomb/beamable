@@ -129,7 +129,11 @@ async function waitForSelectorWithRetry(page, selector, maxAttempts = 3, timeout
 
 // Function to process each unclaimed quest using Puppeteer
 async function processQuest(token, quest) {
-  const browserArgs = ['--no-sandbox', '--disable-setuid-sandbox'];
+  const browserArgs = [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+  ];
   const browser = await puppeteer.launch({
     headless: true,
     executablePath: '/usr/bin/chromium-browser',
@@ -156,7 +160,7 @@ async function processQuest(token, quest) {
     console.log('Quest details page content:', pageContent);
 
     // အဆင့် ၃: "Click the Link" ကို ရှာပြီး နှိပ်တယ် (လိုအပ်ရင်သာ)
-    let claimButton = await page.$('button.btn.btn-primary');
+    let claimButton = await page.$('button.btn-primary');
     let buttonText = claimButton ? await page.evaluate(btn => btn.textContent.trim(), claimButton) : null;
 
     if (claimButton && buttonText.toLowerCase().includes('claim')) {
@@ -174,15 +178,15 @@ async function processQuest(token, quest) {
           console.log('Page content after clicking:', contentAfterClick);
           await new Promise(resolve => setTimeout(resolve, 10000));
 
-          // လက်ရှိ Quest စာမျက်နှာကို Reload လုပ်မယ် (မူလ Quest စာမျက်နှာကို ပြန်မသွားဘူး)
+          // လက်ရှိ Quest စာမျက်နှာကို Reload လုပ်မယ်
           console.log('Reloading the current quest page...');
           await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
-          await new Promise(resolve => setTimeout(resolve, 5000));
+          await new Promise(resolve => setTimeout(resolve, 10000)); // 10 စက္ကန့် စောင့်ပါ
           const reloadedPageContent = await page.content();
           console.log('Page content after reload:', reloadedPageContent);
 
           // Reload လုပ်ပြီးရင် Claim Reward ခလုတ်ကို ထပ်ရှာမယ်
-          claimButton = await page.$('button.btn.btn-primary');
+          claimButton = await page.$('button.btn-primary');
           buttonText = claimButton ? await page.evaluate(btn => btn.textContent.trim(), claimButton) : null;
         } else {
           console.log('Found element does not have the text "Click the Link":', linkButtonText);
