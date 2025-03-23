@@ -82,7 +82,7 @@ async function fetchUnclaimedQuests(token, proxy = null) {
     headless: true,
     executablePath: '/usr/bin/chromium-browser',
     args: browserArgs,
-    protocolTimeout: 60000, // Timeout ကို 60 စက္ကန့်လို့ သတ်မှတ်ထားပါတယ်
+    protocolTimeout: 60000,
   });
   const page = await browser.newPage();
 
@@ -156,7 +156,7 @@ async function fetchUnclaimedQuests(token, proxy = null) {
 }
 
 // Function to wait for an element with retries
-async function waitForSelectorWithRetry(page, selector, maxAttempts = 3, timeout = 60000) {
+async function waitForSelectorWithRetry(page, selector, maxAttempts = 5, timeout = 60000) {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       console.log(`Attempt ${attempt}: Waiting for selector "${selector}"`);
@@ -171,6 +171,51 @@ async function waitForSelectorWithRetry(page, selector, maxAttempts = 3, timeout
       await new Promise(resolve => setTimeout(resolve, 10000));
     }
   }
+}
+
+// Function to check if the claim was successful with retries
+async function checkClaimStatusWithRetry(page, quest, maxAttempts = 3) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    console.log(`Attempt ${attempt}: Checking if the claim was successful after reload...`);
+    try {
+      const claimedStatus = await page.evaluate(() => {
+        const divs = document.querySelectorAll('div[class*="text-highlight"]');
+        for (const div of divs) {
+          const text = div.textContent.trim().toLowerCase();
+          if (text === 'reward claimed') {
+            return { text, classes: div.className };
+          }
+        }
+        return null;
+      });
+
+      if (claimedStatus) {
+        console.log(`Successfully claimed the reward for quest: ${quest.title} (ID: ${quest.id})!`);
+        console.log(`Found "Rewards Claimed" with classes: "${claimedStatus.classes}"`);
+        return true;
+      } else {
+        console.log(`Attempt ${attempt}: "Rewards Claimed" text not found.`);
+        if (attempt === maxAttempts) {
+          console.log(`Failed to claim the reward for quest: ${quest.title} (ID: ${quest.id}). "Rewards Claimed" text not found after ${maxAttempts} attempts.`);
+          console.log('Please check if the quest is already claimed or if the page structure has changed.');
+          return false;
+        }
+        console.log('Reloading the page to try again...');
+        await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
+        await new Promise(resolve => setTimeout(resolve, 30000));
+      }
+    } catch (error) {
+      console.log(`Attempt ${attempt}: Error while checking claim status: ${error.message}`);
+      if (attempt === maxAttempts) {
+        console.log(`Failed to check claim status for quest: ${quest.title} (ID: ${quest.id}) after ${maxAttempts} attempts.`);
+        return false;
+      }
+      console.log('Reloading the page to try again...');
+      await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
+      await new Promise(resolve => setTimeout(resolve, 30000));
+    }
+  }
+  return false;
 }
 
 // Function to process each unclaimed quest using Puppeteer
@@ -189,7 +234,7 @@ async function processQuest(token, quest, proxy = null) {
     headless: true,
     executablePath: '/usr/bin/chromium-browser',
     args: browserArgs,
-    protocolTimeout: 60000, // Timeout ကို 60 စက္ကန့်လို့ သတ်မှတ်ထားပါတယ်
+    protocolTimeout: 60000,
   });
   const page = await browser.newPage();
 
@@ -221,12 +266,10 @@ async function processQuest(token, quest, proxy = null) {
         console.log('Clicked "Click the Link" button');
         await new Promise(resolve => setTimeout(resolve, 15000));
 
-        // စာမျက်နှာကို ၂ ကြိမ် Reload လုပ်မယ်
-        for (let i = 1; i <= 2; i++) {
-          console.log(`Reloading the current quest page (Attempt ${i}/2)...`);
-          await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
-          await new Promise(resolve => setTimeout(resolve, 30000)); // 30 စက္ကန့်စောင့်မယ်
-        }
+        // စာမျက်နှာကို ၁ ကြိမ်ပဲ Reload လုပ်မယ်
+        console.log('Reloading the current quest page (Attempt 1/1)...');
+        await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
+        await new Promise(resolve => setTimeout(resolve, 30000));
       } else {
         console.log(`Found element does not have the text "Click the Link": "${linkButtonText}". Skipping to Claim Reward...`);
       }
@@ -234,9 +277,25 @@ async function processQuest(token, quest, proxy = null) {
       console.log('Could not find "Click the Link" button with selector "a[class*="btn-accent"]"');
     }
 
-    // အဆင့် ၄: Reload ၂ ကြိမ်ပြီးမှ Claim Reward ကို ရှာပြီး နှိပ်မယ်
-    console.log('Looking for "Claim Reward" button after 2 reloads...');
-    const claimButton = await waitForSelectorWithRetry(page, 'button.btn-primary');
+    // အဆင့် ၄: Reload ၁ ကြိမ်ပြီးမှ Claim Reward ကို ရှာပြီး နှိပ်မယ်
+    let claimButton = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      console.log(`Attempt ${attempt}: Looking for "Claim Reward" button after 1 reload...`);
+      try {
+        claimButton = await waitForSelectorWithRetry(page, 'button.btn-primary');
+        break;
+      } catch (error) {
+        console.log(`Attempt ${attempt} failed to find "Claim Reward" button: ${error.message}`);
+        if (attempt === 3) {
+          console.log(`Could not find "Claim Reward" button after 3 attempts for quest: ${quest.title} (ID: ${quest.id})`);
+          return;
+        }
+        console.log('Reloading the page to try again...');
+        await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
+        await new Promise(resolve => setTimeout(resolve, 30000));
+      }
+    }
+
     const buttonText = claimButton ? await page.evaluate(btn => btn.textContent.trim(), claimButton) : null;
 
     if (claimButton && buttonText.toLowerCase().includes('claim')) {
@@ -249,32 +308,10 @@ async function processQuest(token, quest, proxy = null) {
         // Claim ပြီးရင် စာမျက်နှာကို Reload လုပ်မယ်
         console.log('Reloading the page after claiming the reward...');
         await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
-        await new Promise(resolve => setTimeout(resolve, 30000)); // 30 စက္ကန့်စောင့်မယ်
+        await new Promise(resolve => setTimeout(resolve, 30000));
 
         // အဆင့် ၅: Reload ပြီးမှ Success ဖြစ်မဖြစ် စစ်မယ်
-        console.log('Checking if the claim was successful after reload...');
-        try {
-          const claimedStatus = await page.evaluate(() => {
-            const divs = document.querySelectorAll('div[class*="text-highlight"]');
-            for (const div of divs) {
-              const text = div.textContent.trim().toLowerCase();
-              if (text === 'reward claimed') {
-                return { text, classes: div.className };
-              }
-            }
-            return null;
-          });
-
-          if (claimedStatus) {
-            console.log(`Successfully claimed the reward for quest: ${quest.title} (ID: ${quest.id})!`);
-            console.log(`Found "Reward Claimed" with classes: "${claimedStatus.classes}"`);
-          } else {
-            console.log(`Failed to claim the reward for quest: ${quest.title} (ID: ${quest.id}). "Reward Claimed" text not found after reload.`);
-            console.log('Please check if the quest is already claimed or if the page structure has changed.');
-          }
-        } catch (error) {
-          console.log(`Error while checking claim status for quest: ${quest.title} (ID: ${quest.id}): ${error.message}`);
-        }
+        await checkClaimStatusWithRetry(page, quest);
       } else {
         console.log(`Claim ခလုတ်က မနှိပ်လို့မရပါ: ${quest.title} (ID: ${quest.id})`);
       }
@@ -288,7 +325,39 @@ async function processQuest(token, quest, proxy = null) {
   }
 }
 
-// Main function to run the script for multiple accounts
+// Function to process all accounts for one run
+async function processAllAccounts(accounts, proxies) {
+  for (let i = 0; i < accounts.length; i++) {
+    const { username, token } = accounts[i];
+    const proxy = proxies.length > 0 ? proxies[i % proxies.length] : null;
+    console.log(`=== Processing account: ${username}${proxy ? ` with proxy: ${proxy}` : ' without proxy'} ===`);
+
+    try {
+      const unclaimedQuests = await fetchUnclaimedQuests(token, proxy);
+      console.log(`Found ${unclaimedQuests.length} unclaimed quests for ${username}`);
+
+      for (const quest of unclaimedQuests) {
+        console.log(`Processing quest for ${username}: ${quest.title} (ID: ${quest.id}, Claimable: ${quest.isClaimable})`);
+        await processQuest(token, quest, proxy);
+        console.log('Waiting 10 seconds before processing the next quest...');
+        await new Promise(resolve => setTimeout(resolve, 10000));
+      }
+
+      console.log(`All unclaimed quests processed for ${username}!`);
+    } catch (error) {
+      console.error(`Failed to process quests for ${username}:`, error.message);
+      if (error.message.includes('Authentication failed')) {
+        console.log(`Please check the token for ${username} in token.txt. It might be invalid or expired.`);
+        console.log('You may need to log in manually to get a new token and update token.txt.');
+      }
+    }
+
+    console.log('Waiting 15 seconds before processing the next account...');
+    await new Promise(resolve => setTimeout(resolve, 15000));
+  }
+}
+
+// Main function to run the script for multiple accounts with auto-retry
 async function main() {
   try {
     console.log('Make sure you have activated the virtual environment with: source venv/bin/activate');
@@ -296,36 +365,17 @@ async function main() {
     const accounts = await readTokens();
     const proxies = await readProxies();
 
-    for (let i = 0; i < accounts.length; i++) {
-      const { username, token } = accounts[i];
-      const proxy = proxies.length > 0 ? proxies[i % proxies.length] : null;
-      console.log(`=== Processing account: ${username}${proxy ? ` with proxy: ${proxy}` : ' without proxy'} ===`);
-
-      try {
-        const unclaimedQuests = await fetchUnclaimedQuests(token, proxy);
-        console.log(`Found ${unclaimedQuests.length} unclaimed quests for ${username}`);
-
-        for (const quest of unclaimedQuests) {
-          console.log(`Processing quest for ${username}: ${quest.title} (ID: ${quest.id}, Claimable: ${quest.isClaimable})`);
-          await processQuest(token, quest, proxy);
-          console.log('Waiting 10 seconds before processing the next quest...');
-          await new Promise(resolve => setTimeout(resolve, 10000));
-        }
-
-        console.log(`All unclaimed quests processed for ${username}!`);
-      } catch (error) {
-        console.error(`Failed to process quests for ${username}:`, error.message);
-        if (error.message.includes('Authentication failed')) {
-          console.log(`Please check the token for ${username} in token.txt. It might be invalid or expired.`);
-          console.log('You may need to log in manually to get a new token and update token.txt.');
-        }
+    const maxRuns = 2; // အကောင့်အကုန်လုံး ပြီးရင် နောက်တစ်ကြိမ် ထပ် Run မယ execution ကို ထိန်းချုပ်ဖို့
+    for (let run = 1; run <= maxRuns; run++) {
+      console.log(`=== Starting Run ${run} of ${maxRuns} ===`);
+      await processAllAccounts(accounts, proxies);
+      if (run < maxRuns) {
+        console.log(`Run ${run} completed. Starting the next run in 30 seconds...`);
+        await new Promise(resolve => setTimeout(resolve, 30000));
       }
-
-      console.log('Waiting 15 seconds before processing the next account...');
-      await new Promise(resolve => setTimeout(resolve, 15000));
     }
 
-    console.log('All accounts processed!');
+    console.log('All runs completed! Script has finished.');
   } catch (error) {
     console.error('Script failed:', error.message);
   }
