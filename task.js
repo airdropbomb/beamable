@@ -160,7 +160,7 @@ async function fetchUnclaimedQuests(token, proxy = null) {
 }
 
 // Function to wait for an element with retries
-async function waitForSelectorWithRetry(page, selector, maxAttempts = 5, timeout = 15000) {
+async function waitForSelectorWithRetry(page, selector, maxAttempts = 3, timeout = 30000) {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       console.log(`Attempt ${attempt}: Waiting for selector "${selector}"`);
@@ -171,8 +171,8 @@ async function waitForSelectorWithRetry(page, selector, maxAttempts = 5, timeout
       if (attempt === maxAttempts) {
         throw error;
       }
-      console.log('Retrying after 5 seconds...');
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      console.log('Retrying after 10 seconds...');
+      await new Promise(resolve => setTimeout(resolve, 10000));
     }
   }
 }
@@ -262,6 +262,19 @@ async function processQuest(token, quest, proxy = null) {
         await claimButton.click();
         console.log(`Quest ကို Claim လုပ်လိုက်ပါပြီ: ${quest.title} (ID: ${quest.id})`);
         await new Promise(resolve => setTimeout(resolve, 30000));
+
+        // အဆင့် ၅: Claim ပြီးရင် Success ဖြစ်မဖြစ် စစ်မယ်
+        console.log('Checking if the claim was successful...');
+        const claimedElement = await waitForSelectorWithRetry(page, 'span.p3');
+        const claimedText = claimedElement ? await page.evaluate(el => el.textContent.trim().toLowerCase(), claimedElement) : null;
+
+        if (claimedText && claimedText === 'claimed') {
+          console.log(`Successfully claimed the reward for quest: ${quest.title} (ID: ${quest.id})!`);
+        } else {
+          console.log(`Failed to claim the reward for quest: ${quest.title} (ID: ${quest.id}).`);
+          const pageContentAfterClaim = await page.content();
+          console.log('Page content after attempting to claim:', pageContentAfterClaim);
+        }
       } else {
         console.log(`Claim ခလုတ်က မနှိပ်လို့မရပါ: ${quest.title} (ID: ${quest.id})`);
       }
