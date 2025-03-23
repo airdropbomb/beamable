@@ -14,33 +14,73 @@ const fs = require('fs').promises;
 // Base URL for the quests page
 const QUESTS_URL = 'https://hub.beamable.network/modules/questsold';
 
-// Function to read the token from token.txt
-async function readToken() {
+// Function to read multiple proxies from proxies.txt (Optional)
+async function readProxies() {
+  try {
+    const data = await fs.readFile('proxies.txt', 'utf8');
+    const proxies = data.trim().split('\n').map(proxy => proxy.trim()).filter(proxy => proxy);
+    console.log(`Found ${proxies.length} proxies in proxies.txt`);
+    return proxies;
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      console.log('proxies.txt not found. Proceeding without proxies.');
+      return []; // Proxy မရှိရင် ဗလာ Array ပြန်မယ်
+    }
+    console.error('Error reading proxies.txt:', error.message);
+    return []; // အခြား အမှားဖြစ်ရင်လည်း ဗလာ Array ပြန်မယ်
+  }
+}
+
+// Function to read multiple tokens from token.txt
+async function readTokens() {
   try {
     const data = await fs.readFile('token.txt', 'utf8');
-    const parts = data.trim().split('=');
-    if (parts.length !== 3 || parts[1] !== 'harborSession') {
-      throw new Error('Invalid token format in token.txt. Expected format: username=harborSession=token_value');
+    const lines = data.trim().split('\n');
+    const accounts = [];
+
+    for (const line of lines) {
+      const parts = line.trim().split('=');
+      if (parts.length !== 3 || parts[1] !== 'harborSession') {
+        console.error(`Invalid token format in line: ${line}. Expected format: username=harborSession=token_value`);
+        continue;
+      }
+      const username = parts[0];
+      const token = parts[2];
+      if (!token) {
+        console.error(`Token is empty for username: ${username}`);
+        continue;
+      }
+      accounts.push({ username, token });
+      console.log(`Found account - Username: ${username}, Token: ${token}`);
     }
-    const username = parts[0];
-    const token = parts[2];
-    if (!token) {
-      throw new Error('Token is empty or not found in token.txt');
+
+    if (accounts.length === 0) {
+      throw new Error('No valid accounts found in token.txt');
     }
-    console.log(`Username: ${username}`);
-    return { username, token };
+
+    console.log(`Total accounts found: ${accounts.length}`);
+    return accounts;
   } catch (error) {
     console.error('Error reading token.txt:', error.message);
-    throw new Error('Failed to read token');
+    throw new Error('Failed to read tokens');
   }
 }
 
 // Function to fetch unclaimed quests using Puppeteer
-async function fetchUnclaimedQuests(token) { // Function အနေနဲ့ ပြန်သတ်မှတ်တယ်
-  const browserArgs = ['--no-sandbox', '--disable-setuid-sandbox'];
+async function fetchUnclaimedQuests(token, proxy = null) {
+  const browserArgs = [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+  ];
+  if (proxy) {
+    browserArgs.push(`--proxy-server=${proxy}`);
+    console.log(`Using proxy: ${proxy}`);
+  }
+
   const browser = await puppeteer.launch({
     headless: true,
-    executablePath: '/usr/bin/chromium-browser', // Contabo VPS မှာ Chromium ရဲ့ path
+    executablePath: '/usr/bin/chromium-browser',
     args: browserArgs,
   });
   const page = await browser.newPage();
@@ -138,12 +178,17 @@ async function waitForSelectorWithRetry(page, selector, maxAttempts = 3, timeout
 }
 
 // Function to process each unclaimed quest using Puppeteer
-async function processQuest(token, quest) {
+async function processQuest(token, quest, proxy = null) {
   const browserArgs = [
     '--no-sandbox',
     '--disable-setuid-sandbox',
     '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
   ];
+  if (proxy) {
+    browserArgs.push(`--proxy-server=${proxy}`);
+    console.log(`Using proxy: ${proxy}`);
+  }
+
   const browser = await puppeteer.launch({
     headless: true,
     executablePath: '/usr/bin/chromium-browser',
@@ -161,7 +206,6 @@ async function processQuest(token, quest) {
       secure: true,
     });
 
-    // အဆင့် ၂: မလုပ်ရသေးတဲ့ Quest ရဲ့ စာမျက်နှာထဲ ဝင်တယ်
     const questDetailsUrl = `${QUESTS_URL}/${quest.id}`;
     console.log(`Quest စာမျက်နှာကို သွားနေပါတယ်: ${questDetailsUrl}`);
     await page.goto(questDetailsUrl, { waitUntil: 'networkidle2', timeout: 30000 });
@@ -169,7 +213,6 @@ async function processQuest(token, quest) {
     const pageContent = await page.content();
     console.log('Quest details page content:', pageContent);
 
-    // အဆင့် ၃: "Click the Link" ကို ရှာပြီး နှိပ်တယ် (လိုအပ်ရင်သာ)
     let claimButton = await page.$('button.btn-primary');
     let buttonText = claimButton ? await page.evaluate(btn => btn.textContent.trim(), claimButton) : null;
 
@@ -188,14 +231,12 @@ async function processQuest(token, quest) {
           console.log('Page content after clicking:', contentAfterClick);
           await new Promise(resolve => setTimeout(resolve, 10000));
 
-          // လက်ရှိ Quest စာမျက်နှာကို Reload လုပ်မယ်
           console.log('Reloading the current quest page...');
           await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
-          await new Promise(resolve => setTimeout(resolve, 10000)); // 10 စက္ကန့် စောင့်ပါ
+          await new Promise(resolve => setTimeout(resolve, 10000));
           const reloadedPageContent = await page.content();
           console.log('Page content after reload:', reloadedPageContent);
 
-          // Reload လုပ်ပြီးရင် Claim Reward ခလုတ်ကို ထပ်ရှာမယ်
           claimButton = await page.$('button.btn-primary');
           buttonText = claimButton ? await page.evaluate(btn => btn.textContent.trim(), claimButton) : null;
         } else {
@@ -206,13 +247,12 @@ async function processQuest(token, quest) {
       }
     }
 
-    // အဆင့် ၄: လက်ရှိ Quest စာမျက်နှာမှာပဲ Claim Reward ကို ရှာပြီး နှိပ်တယ်
     if (claimButton && buttonText.toLowerCase().includes('claim')) {
       const isDisabled = await page.evaluate(btn => btn.disabled, claimButton);
       if (!isDisabled) {
         await claimButton.click();
         console.log(`Quest ကို Claim လုပ်လိုက်ပါပြီ: ${quest.title} (ID: ${quest.id})`);
-        await new Promise(resolve => setTimeout(resolve, 30000)); // 30 စက္ကန့် စောင့်ပါ
+        await new Promise(resolve => setTimeout(resolve, 30000));
       } else {
         console.log(`Claim ခလုတ်က မနှိပ်လို့မရပါ: ${quest.title} (ID: ${quest.id})`);
       }
@@ -225,31 +265,48 @@ async function processQuest(token, quest) {
     await browser.close();
   }
 }
-// Main function to run the script
+
+// Main function to run the script for multiple accounts
 async function main() {
   try {
     console.log('Make sure you have activated the virtual environment with: source venv/bin/activate');
 
-    const { username, token } = await readToken();
-    console.log(`Token retrieved for ${username}: ${token}`);
+    const accounts = await readTokens();
+    const proxies = await readProxies();
 
-    const unclaimedQuests = await fetchUnclaimedQuests(token);
-    console.log(`Found ${unclaimedQuests.length} unclaimed quests`);
+    for (let i = 0; i < accounts.length; i++) {
+      const { username, token } = accounts[i];
+      // Proxy ရှိရင် အကောင့်တစ်ခုချင်းစီအတွက် Proxy တစ်ခုစီ သုံးမယ်၊ မရှိရင် Proxy မသုံးဘူး
+      const proxy = proxies.length > 0 ? proxies[i % proxies.length] : null;
+      console.log(`=== Processing account: ${username}${proxy ? ` with proxy: ${proxy}` : ' without proxy'} ===`);
 
-    for (const quest of unclaimedQuests) {
-      console.log(`Processing quest: ${quest.title} (ID: ${quest.id}, Claimable: ${quest.isClaimable})`);
-      await processQuest(token, quest);
-      console.log('Waiting 5 seconds before processing the next quest...');
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      try {
+        const unclaimedQuests = await fetchUnclaimedQuests(token, proxy);
+        console.log(`Found ${unclaimedQuests.length} unclaimed quests for ${username}`);
+
+        for (const quest of unclaimedQuests) {
+          console.log(`Processing quest for ${username}: ${quest.title} (ID: ${quest.id}, Claimable: ${quest.isClaimable})`);
+          await processQuest(token, quest, proxy);
+          console.log('Waiting 5 seconds before processing the next quest...');
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+
+        console.log(`All unclaimed quests processed for ${username}!`);
+      } catch (error) {
+        console.error(`Failed to process quests for ${username}:`, error.message);
+        if (error.message.includes('Authentication failed')) {
+          console.log(`Please check the token for ${username} in token.txt. It might be invalid or expired.`);
+          console.log('You may need to log in manually to get a new token and update token.txt.');
+        }
+      }
+
+      console.log('Waiting 10 seconds before processing the next account...');
+      await new Promise(resolve => setTimeout(resolve, 10000));
     }
 
-    console.log('All unclaimed quests processed!');
+    console.log('All accounts processed!');
   } catch (error) {
     console.error('Script failed:', error.message);
-    if (error.message.includes('Authentication failed')) {
-      console.log('Please check your token in token.txt. It might be invalid or expired.');
-      console.log('You may need to log in manually to get a new token and update token.txt.');
-    }
   }
 }
 
