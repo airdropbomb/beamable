@@ -129,9 +129,11 @@ async function waitForSelectorWithRetry(page, selector, maxAttempts = 3, timeout
 
 // Function to process each unclaimed quest using Puppeteer
 async function processQuest(token, quest) {
+  const browserArgs = ['--no-sandbox', '--disable-setuid-sandbox'];
   const browser = await puppeteer.launch({
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    executablePath: '/usr/bin/chromium-browser', // Contabo VPS မှာ Chromium ရဲ့ path
+    args: browserArgs,
   });
   const page = await browser.newPage();
 
