@@ -147,6 +147,7 @@ async function processQuest(token, quest) {
       secure: true,
     });
 
+    // အဆင့် ၂: မလုပ်ရသေးတဲ့ Quest ရဲ့ စာမျက်နှာထဲ ဝင်တယ်
     const questDetailsUrl = `${QUESTS_URL}/${quest.id}`;
     console.log(`Quest စာမျက်နှာကို သွားနေပါတယ်: ${questDetailsUrl}`);
     await page.goto(questDetailsUrl, { waitUntil: 'networkidle2', timeout: 30000 });
@@ -154,14 +155,13 @@ async function processQuest(token, quest) {
     const pageContent = await page.content();
     console.log('Quest details page content:', pageContent);
 
-    // အရင်ဆုံး Claim Reward ခလုတ်ရှိမရှိ စစ်မယ်
+    // အဆင့် ၃: "Click the Link" ကို ရှာပြီး နှိပ်တယ် (လိုအပ်ရင်သာ)
     let claimButton = await page.$('button.btn.btn-primary');
     let buttonText = claimButton ? await page.evaluate(btn => btn.textContent.trim(), claimButton) : null;
 
     if (claimButton && buttonText.toLowerCase().includes('claim')) {
       console.log('Claim Reward ခလုတ်ရှိပြီးသားပါ၊ Click the Link ကို ကျော်ပါမယ်');
     } else {
-      // Claim Reward ခလုတ်မရှိရင် Click the Link ကို ရှာပြီး နှိပ်မယ်
       console.log('Quest is not claimable yet. Attempting to complete required steps...');
       console.log('Looking for "Click the Link" button');
       const clickLinkButton = await waitForSelectorWithRetry(page, 'a.btn-accent');
@@ -174,25 +174,25 @@ async function processQuest(token, quest) {
           console.log('Page content after clicking:', contentAfterClick);
           await new Promise(resolve => setTimeout(resolve, 10000));
 
-          // Quest စာမျက်နှာကို ပြန်မသွားဘဲ လက်ရှိစာမျက်နှာကို Reload လုပ်မယ်
-          console.log('Reloading the current page...');
+          // လက်ရှိ Quest စာမျက်နှာကို Reload လုပ်မယ် (မူလ Quest စာမျက်နှာကို ပြန်မသွားဘူး)
+          console.log('Reloading the current quest page...');
           await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
           await new Promise(resolve => setTimeout(resolve, 5000));
           const reloadedPageContent = await page.content();
           console.log('Page content after reload:', reloadedPageContent);
+
+          // Reload လုပ်ပြီးရင် Claim Reward ခလုတ်ကို ထပ်ရှာမယ်
+          claimButton = await page.$('button.btn.btn-primary');
+          buttonText = claimButton ? await page.evaluate(btn => btn.textContent.trim(), claimButton) : null;
         } else {
           console.log('Found element does not have the text "Click the Link":', linkButtonText);
         }
       } else {
         console.log('Could not find "Click the Link" button');
       }
-
-      // Reload လုပ်ပြီးရင် Claim Reward ခလုတ်ကို ထပ်ရှာမယ်
-      claimButton = await page.$('button.btn.btn-primary');
-      buttonText = claimButton ? await page.evaluate(btn => btn.textContent.trim(), claimButton) : null;
     }
 
-    // Claim Reward ခလုတ်ကို နှိပ်မယ်
+    // အဆင့် ၄: လက်ရှိ Quest စာမျက်နှာမှာပဲ Claim Reward ကို ရှာပြီး နှိပ်တယ်
     if (claimButton && buttonText.toLowerCase().includes('claim')) {
       const isDisabled = await page.evaluate(btn => btn.disabled, claimButton);
       if (!isDisabled) {
@@ -211,7 +211,6 @@ async function processQuest(token, quest) {
     await browser.close();
   }
 }
-
 // Main function to run the script
 async function main() {
   try {
