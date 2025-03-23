@@ -26,10 +26,12 @@ async function readToken() {
 }
 
 // Function to fetch unclaimed quests using Puppeteer
-async function fetchUnclaimedQuests(token) {
+async function fetchUnclaimedQuests(token) { // Function အနေနဲ့ ပြန်သတ်မှတ်တယ်
+  const browserArgs = ['--no-sandbox', '--disable-setuid-sandbox'];
   const browser = await puppeteer.launch({
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    executablePath: '/usr/bin/chromium-browser', // Contabo VPS မှာ Chromium ရဲ့ path
+    args: browserArgs,
   });
   const page = await browser.newPage();
 
@@ -126,11 +128,11 @@ async function waitForSelectorWithRetry(page, selector, maxAttempts = 3, timeout
 }
 
 // Function to process each unclaimed quest using Puppeteer
-async function processQuest(token, quest) {
-  const browserArgs = ['--no-sandbox', '--disable-setuid-sandbox', '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'];
+async function processQuest(token, quest) { // Function အနေနဲ့ ပြန်သတ်မှတ်တယ်
+  const browserArgs = ['--no-sandbox', '--disable-setuid-sandbox'];
   const browser = await puppeteer.launch({
     headless: true,
-    executablePath: '/usr/bin/chromium-browser',
+    executablePath: '/usr/bin/chromium-browser', // Contabo VPS မှာ Chromium ရဲ့ path
     args: browserArgs,
   });
   const page = await browser.newPage();
