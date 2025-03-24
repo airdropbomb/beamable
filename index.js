@@ -105,6 +105,48 @@ function getRandomProxy(proxies) {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+async function clickShowMoreButton(page, accountId, maxAttempts = 5) {
+    let attempts = 0;
+    let showMoreFound = false;
+
+    while (attempts < maxAttempts) {
+        try {
+            // Scroll to the bottom of the page
+            await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+            await delay(1000); // Wait for 1 second to ensure the page is fully scrolled
+
+            // Find the "Show More" button
+            const showMoreButton = await page.$('div.text-center button');
+            if (showMoreButton) {
+                const buttonText = await page.evaluate(el => el.textContent.trim().toLowerCase(), showMoreButton);
+                if (buttonText.includes('show more')) {
+                    console.log(`Account ${accountId}: Found "Show More" button, clicking...`);
+                    await showMoreButton.click();
+                    await delay(3000); // Wait for the page to load more content
+                    showMoreFound = true;
+                    attempts = 0; // Reset attempts to keep checking for more "Show More" buttons
+                } else {
+                    console.log(`Account ${accountId}: Button found in div.text-center but text is "${buttonText}", not "Show More".`);
+                    break;
+                }
+            } else {
+                console.log(`Account ${accountId}: No "Show More" button found on attempt ${attempts + 1}.`);
+                break;
+            }
+        } catch (error) {
+            console.error(`Account ${accountId}: Error while trying to click "Show More" button: ${error.message}`);
+            break;
+        }
+        attempts++;
+    }
+
+    if (showMoreFound) {
+        console.log(`Account ${accountId}: Successfully clicked all "Show More" buttons.`);
+    } else {
+        console.log(`Account ${accountId}: No more "Show More" buttons to click.`);
+    }
+}
+
 async function processTokenWithRetry(proxies, accountId, harborSession, maxRetries = 3) {
     const lastCheckinTime = await getLastCheckinTime(accountId);
     const now = Date.now();
@@ -206,13 +248,6 @@ async function processTokenWithRetry(proxies, accountId, harborSession, maxRetri
             });
             await delay(2000);
 
-            await page.waitForFunction(() => {
-                const buttons = document.querySelectorAll('button');
-                return Array.from(buttons).some(button => 
-                    button.textContent.trim().toLowerCase().includes('claim')
-                );
-            }, { timeout: 30000 });
-
             const currentUrl = page.url();
             console.log(`Account ${accountId}: Current URL: ${currentUrl}`);
 
@@ -225,6 +260,9 @@ async function processTokenWithRetry(proxies, accountId, harborSession, maxRetri
             } else {
                 console.log(`Account ${accountId}: Redirected to an unexpected page.`);
             }
+
+            // Click "Show More" buttons to load all claim days
+            await clickShowMoreButton(page, accountId);
 
             const pageText = await page.evaluate(() => document.body.innerText);
             if (pageText.toLowerCase().includes('claimed') || pageText.toLowerCase().includes('already claimed') || pageText.toLowerCase().includes('check-in complete')) {
