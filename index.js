@@ -105,48 +105,6 @@ function getRandomProxy(proxies) {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-async function clickShowMoreButton(page, accountId, maxAttempts = 5) {
-    let attempts = 0;
-    let showMoreFound = false;
-
-    while (attempts < maxAttempts) {
-        try {
-            // Scroll to the bottom of the page
-            await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-            await delay(1000); // Wait for 1 second to ensure the page is fully scrolled
-
-            // Find the "Show More" button
-            const showMoreButton = await page.$('div.text-center button');
-            if (showMoreButton) {
-                const buttonText = await page.evaluate(el => el.textContent.trim().toLowerCase(), showMoreButton);
-                if (buttonText.includes('show more')) {
-                    console.log(`Account ${accountId}: Found "Show More" button, clicking...`);
-                    await showMoreButton.click();
-                    await delay(3000); // Wait for the page to load more content
-                    showMoreFound = true;
-                    attempts = 0; // Reset attempts to keep checking for more "Show More" buttons
-                } else {
-                    console.log(`Account ${accountId}: Button found in div.text-center but text is "${buttonText}", not "Show More".`);
-                    break;
-                }
-            } else {
-                console.log(`Account ${accountId}: No "Show More" button found on attempt ${attempts + 1}.`);
-                break;
-            }
-        } catch (error) {
-            console.error(`Account ${accountId}: Error while trying to click "Show More" button: ${error.message}`);
-            break;
-        }
-        attempts++;
-    }
-
-    if (showMoreFound) {
-        console.log(`Account ${accountId}: Successfully clicked all "Show More" buttons.`);
-    } else {
-        console.log(`Account ${accountId}: No more "Show More" buttons to click.`);
-    }
-}
-
 async function processTokenWithRetry(proxies, accountId, harborSession, maxRetries = 3) {
     const lastCheckinTime = await getLastCheckinTime(accountId);
     const now = Date.now();
@@ -237,7 +195,13 @@ async function processTokenWithRetry(proxies, accountId, harborSession, maxRetri
             }
 
             console.log(`Account ${accountId}: Navigating to daily check-in page with harbor-session token...`);
-            await delay(30000);
+            // Wait for the day groups to appear
+            try {
+                await page.waitForSelector('div[class*="relative flex"]', { timeout: 60000 });
+                console.log(`Account ${accountId}: Day groups loaded successfully.`);
+            } catch (error) {
+                console.log(`Account ${accountId}: Failed to load day groups: ${error.message}`);
+            }
 
             await page.evaluate(() => {
                 const sidebar = document.querySelector('.sidebar');
@@ -261,8 +225,12 @@ async function processTokenWithRetry(proxies, accountId, harborSession, maxRetri
                 console.log(`Account ${accountId}: Redirected to an unexpected page.`);
             }
 
-            // Click "Show More" buttons to load all claim days
-            await clickShowMoreButton(page, accountId);
+            // Debug: Log all div classes to understand the page structure
+            const divClasses = await page.evaluate(() => {
+                const divs = Array.from(document.querySelectorAll('div'));
+                return divs.map(div => div.className).filter(className => className);
+            });
+            console.log(`Account ${accountId}: All div classes on the page: ${JSON.stringify(divClasses)}`);
 
             // Check if the claim has already been completed
             const pageText = await page.evaluate(() => document.body.innerText);
@@ -321,7 +289,8 @@ async function processTokenWithRetry(proxies, accountId, harborSession, maxRetri
                             buttonText.includes('get reward') || 
                             buttonText.includes('daily check-in') || 
                             buttonText.includes('get it') || 
-                            buttonText.includes('check in now')
+                            buttonText.includes('check in now') || 
+                            buttonText.includes('claim now')
                         ) {
                             console.log(`Account ${accountId}: Found a "${buttonText}" button, attempting to click...`);
                             await page.evaluate((el) => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), button);
@@ -384,68 +353,43 @@ async function processTokenWithRetry(proxies, accountId, harborSession, maxRetri
             await fs.writeFile(path.join(accountDir, 'dailycheckin_page.html'), content, 'utf8');
             console.log(`Account ${accountId}: Full page content saved to ${path.join(accountDir, 'dailycheckin_page.html')}`);
 
-            const data = await page.evaluate(() => {
-                const buttons = Array.from(document.querySelectorAll('button'))
-                    .filter(b => b.textContent.trim().length > 0)
-                    .map(b => {
-                        let statusText = b.textContent.trim();
-                        if (statusText.toLowerCase().includes('loading')) statusText = 'Loading';
-                        else if (statusText.toLowerCase().includes('searching')) statusText = 'Searching';
-                        else if (statusText.toLowerCase().includes('process')) statusText = 'Processing';
-                        return { text: statusText, id: b.id, class: b.className };
-                    })
-                    .filter((item, index, self) => index === self.findIndex((t) => t.text === item.text && t.class === item.class));
-                const forms = Array.from(document.querySelectorAll('form')).map(f => ({
-                    action: f.action,
-                    method: f.method
-                }));
-                return { buttons, forms };
-            });
-
-            const dataToWrite = `Buttons:\n${JSON.stringify(data.buttons, null, 2)}\n\nForms:\n${JSON.stringify(data.forms, null, 2)}`;
-            await fs.writeFile(path.join(accountDir, 'dailycheckin_data.txt'), dataToWrite, 'utf8');
+            const dataToSave = `Account: ${accountId}\nLast Check-in: ${new Date(now).toLocaleString()}\nStatus: ${claimButtonFound ? 'Claimed' : 'Not Claimed'}\n`;
+            await fs.writeFile(path.join(accountDir, 'dailycheckin_data.txt'), dataToSave, 'utf8');
             console.log(`Account ${accountId}: Data successfully saved to ${path.join(accountDir, 'dailycheckin_data.txt')}`);
 
             await browser.close();
-            return false;
+            return claimButtonFound;
         } catch (error) {
-            console.error(`Account ${accountId} - Attempt ${attempt} failed: ${error.message}`);
+            console.error(`Account ${accountId}: Error on attempt ${attempt}: ${error.message}`);
             if (browser) await browser.close();
             if (attempt === maxRetries) {
-                console.error(`Account ${accountId}: All attempts failed. Will retry after delay...`);
+                console.log(`Account ${accountId}: Max retries reached. Failed to process.`);
                 return false;
-            } else {
-                await delay(2000);
             }
+            await delay(5000);
         }
     }
     return false;
 }
 
-async function processToken() {
+async function main() {
     const proxies = await getProxies();
     const tokenData = await getTokenData();
 
-    // Infinite loop to keep the script running
-    while (true) {
-        let allAccountsProcessed = true;
-
-        for (const accountId in tokenData) {
-            console.log(`Processing account: ${accountId}`);
-            const success = await processTokenWithRetry(proxies, accountId, tokenData[accountId]);
-            if (success) {
-                console.log(`Account ${accountId}: Successfully claimed. Waiting for next cycle...`);
-            } else {
-                console.log(`Account ${accountId}: No action taken or failed. Will check again in next cycle...`);
-                allAccountsProcessed = false; // If any account fails or can't claim yet, we don't wait 24 hours yet
-            }
+    for (const [accountId, harborSession] of Object.entries(tokenData)) {
+        console.log(`Processing account: ${accountId}`);
+        const success = await processTokenWithRetry(proxies, accountId, harborSession);
+        if (!success) {
+            console.log(`Account ${accountId}: No action taken or failed. Will check again in next cycle...`);
         }
-
-        // Wait for 24 hours only if all accounts were processed successfully or don't need action
-        const waitTime = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
-        console.log(`All accounts processed. Waiting ${waitTime / (60 * 60 * 1000)} hours before next check...`);
-        await delay(waitTime);
     }
+
+    console.log('All accounts processed. Waiting 24 hours before next check...');
+    await delay(24 * 60 * 60 * 1000);
+    await main();
 }
 
-processToken();
+main().catch(error => {
+    console.error(`Main process error: ${error.message}`);
+    process.exit(1);
+});
