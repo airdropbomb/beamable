@@ -199,7 +199,7 @@ async function processTokenWithRetry(proxies, accountId, harborSession, maxRetri
             });
 
             console.log(`Account ${accountId}: Checking cookie expiration...`);
-            await page.goto('https://hub.beamable.network/modules/dailycheckin', { waitUntil: 'networkidle2', timeout: 60000 });
+            await page.goto('https://hub.beamable.network/modules/aprildailies', { waitUntil: 'networkidle2', timeout: 60000 });
 
             const cookies = await page.cookies();
             const harborCookie = cookies.find(cookie => cookie.name === 'harbor-session');
