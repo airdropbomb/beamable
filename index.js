@@ -255,7 +255,7 @@ async function processTokenWithRetry(proxies, accountId, harborSession, maxRetri
                 console.log(`Account ${accountId}: Session expired. Please update harborSession cookie manually in token.txt using login link from email.`);
                 await browser.close();
                 return false;
-            } else if (currentUrl.includes('/dashboard') || currentUrl.includes('/modules/dailycheckin')) {
+            } else if (currentUrl.includes('/dashboard') || currentUrl.includes('/modules/aprildailies')) {
                 console.log(`Account ${accountId}: Successfully logged in or redirected to dashboard/daily check-in page.`);
             } else {
                 console.log(`Account ${accountId}: Redirected to an unexpected page.`);
@@ -264,14 +264,33 @@ async function processTokenWithRetry(proxies, accountId, harborSession, maxRetri
             // Click "Show More" buttons to load all claim days
             await clickShowMoreButton(page, accountId);
 
+            // Check if the claim has already been completed
             const pageText = await page.evaluate(() => document.body.innerText);
-            if (pageText.toLowerCase().includes('claimed') || pageText.toLowerCase().includes('already claimed') || pageText.toLowerCase().includes('check-in complete')) {
-                console.log(`Account ${accountId}: Daily check-in already completed. Updating last check-in time.`);
+            const hasCheckIcon = await page.evaluate(() => !!document.querySelector('i.fa-solid.fa-check')); // Check for the tick icon
+            const hasCheckIconWithText = await page.evaluate(() => {
+                const checkIcon = document.querySelector('i.fa-solid.fa-check');
+                if (checkIcon) {
+                    const parentDiv = checkIcon.closest('div');
+                    const text = parentDiv ? parentDiv.innerText.toLowerCase() : '';
+                    return text.includes('checked') || text.includes('done') || text.includes('complete');
+                }
+                return false;
+            });
+
+            if (
+                pageText.toLowerCase().includes('claimed') || 
+                pageText.toLowerCase().includes('already claimed') || 
+                pageText.toLowerCase().includes('check-in complete') || 
+                hasCheckIcon || 
+                hasCheckIconWithText
+            ) {
+                console.log(`Account ${accountId}: Daily check-in already completed (detected via text, check icon, or related text). Updating last check-in time.`);
                 await setLastCheckinTime(accountId, now);
                 await browser.close();
                 return true;
             } else {
-                const dayGroups = await page.$$('div.relative.flex.flex-col.group');
+                // Find day groups with a more flexible selector
+                const dayGroups = await page.$$('div[class*="relative flex"]');
                 let claimButtonFound = false;
 
                 console.log(`Account ${accountId}: Found ${dayGroups.length} day groups to check.`);
@@ -300,7 +319,9 @@ async function processTokenWithRetry(proxies, accountId, harborSession, maxRetri
                             buttonText.includes('check in') || 
                             buttonText.includes('check-in') || 
                             buttonText.includes('get reward') || 
-                            buttonText.includes('daily check-in')
+                            buttonText.includes('daily check-in') || 
+                            buttonText.includes('get it') || 
+                            buttonText.includes('check in now')
                         ) {
                             console.log(`Account ${accountId}: Found a "${buttonText}" button, attempting to click...`);
                             await page.evaluate((el) => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), button);
@@ -315,6 +336,13 @@ async function processTokenWithRetry(proxies, accountId, harborSession, maxRetri
                                 try {
                                     await button.click();
                                     await delay(3000);
+                                    // Check if the tick appears after clicking
+                                    const tickAppeared = await page.evaluate(() => !!document.querySelector('i.fa-solid.fa-check'));
+                                    if (tickAppeared) {
+                                        console.log(`Account ${accountId}: Tick appeared, confirming claim was successful.`);
+                                    } else {
+                                        console.log(`Account ${accountId}: Tick did not appear after clicking Claim button. Claim might have failed.`);
+                                    }
                                     claimButtonFound = true;
                                     console.log(`Account ${accountId}: Claim successful`);
                                     await setLastCheckinTime(accountId, now);
@@ -323,6 +351,13 @@ async function processTokenWithRetry(proxies, accountId, harborSession, maxRetri
                                     console.log(`Account ${accountId}: Click failed with error: ${clickError.message}, trying JavaScript click...`);
                                     await page.evaluate((el) => el.click(), button);
                                     await delay(3000);
+                                    // Check if the tick appears after JavaScript click
+                                    const tickAppeared = await page.evaluate(() => !!document.querySelector('i.fa-solid.fa-check'));
+                                    if (tickAppeared) {
+                                        console.log(`Account ${accountId}: Tick appeared, confirming claim was successful.`);
+                                    } else {
+                                        console.log(`Account ${accountId}: Tick did not appear after JavaScript click. Claim might have failed.`);
+                                    }
                                     claimButtonFound = true;
                                     console.log(`Account ${accountId}: Claim successful`);
                                     await setLastCheckinTime(accountId, now);
