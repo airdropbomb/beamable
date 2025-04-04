@@ -115,13 +115,13 @@ async function fetchUnclaimedQuests(token, proxy = null) {
       console.log(`Found ${questElements.length} potential quest elements`);
 
       questElements.forEach((element, index) => {
-        const parent = element.closest('div.bg-content');
-        const titleElement = parent.querySelector('div.h3');
-        if (!titleElement) {
-          console.log(`Quest ${index}: Missing title, skipping`);
-          return;
-        }
-        const title = titleElement.innerText.trim();
+    // Quest ရဲ့ ခေါင်းစဉ်ကို ရှာတယ်
+    const titleElement = element.querySelector('a.h3');
+    if (!titleElement) {
+      console.log(`Quest ${index}: Missing title, skipping`);
+      return;
+    }
+    const title = titleElement.innerText.trim();
 
         const claimedElement = parent.querySelector('span.p3');
         const isClaimed = claimedElement && claimedElement.innerText.trim().toLowerCase() === 'claimed';
