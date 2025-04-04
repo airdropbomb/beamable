@@ -99,7 +99,7 @@ async function fetchUnclaimedQuests(token, proxy = null) {
     console.log('Navigating to quests page:', QUESTS_URL);
     await page.goto(QUESTS_URL, { waitUntil: 'networkidle2', timeout: 60000 });
 
-    await new Promise(resolve => setTimeout(resolve, 10000));
+    await new Promise(resolve => setTimeout(resolve, 15000)); // စာမျက်နှာဖွင့်ပြီး စောင့်ဆိုင်းချိန်ကို တိုးပေးထားပါတယ်
 
     const currentUrl = page.url();
     console.log('Current URL after navigation:', currentUrl);
@@ -126,7 +126,7 @@ async function fetchUnclaimedQuests(token, proxy = null) {
         const claimedElement = parent.querySelector('span.p3');
         const isClaimed = claimedElement && claimedElement.innerText.trim().toLowerCase() === 'claimed';
 
-        const claimableButton = parent.querySelector('button.btn-accent');
+        const claimableButton = parent.querySelector('button[class*="btn-primary-opacity-40"]'); // ဒီမှာ selector ကို ပြောင်းထားပါတယ်
         const isClaimable = !!claimableButton;
 
         console.log(`Quest ${index}: Title="${title}", Is Claimed=${isClaimed}, Is Claimable=${isClaimable}`);
@@ -167,8 +167,8 @@ async function waitForSelectorWithRetry(page, selector, maxAttempts = 5, timeout
       if (attempt === maxAttempts) {
         throw error;
       }
-      console.log('Retrying after 10 seconds...');
-      await new Promise(resolve => setTimeout(resolve, 10000));
+      console.log('Retrying after 15 seconds...'); // စောင့်ဆိုင်းချိန်ကို တိုးပေးထားပါတယ်
+      await new Promise(resolve => setTimeout(resolve, 15000));
     }
   }
 }
@@ -206,11 +206,11 @@ async function processQuest(token, quest, proxy = null) {
     const questDetailsUrl = `${QUESTS_URL}/${quest.id}`;
     console.log(`Quest စာမျက်နှာကို သွားနေပါတယ်: ${questDetailsUrl}`);
     await page.goto(questDetailsUrl, { waitUntil: 'networkidle2', timeout: 60000 });
-    await new Promise(resolve => setTimeout(resolve, 10000));
+    await new Promise(resolve => setTimeout(resolve, 15000)); // စာမျက်နှာဖွင့်ပြီး စောင့်ဆိုင်းချိန်ကို တိုးပေးထားပါတယ်
 
-    // အဆင့် ၃: "Click the Link" ကို မဖြစ်မနေ ရှာပြီး နှိပ်မယ်
+    // အဆင့် ၁: "Click the Link" ခလုတ်ကို ရှာပြီး နှိပ်မယ်
     console.log('Looking for "Click the Link" button');
-    const clickLinkButton = await waitForSelectorWithRetry(page, 'a[class*="btn-accent"]');
+    const clickLinkButton = await waitForSelectorWithRetry(page, 'button[class*="btn-primary-opacity-40"]'); // Selector ကို ပြောင်းထားပါတယ်
     if (clickLinkButton) {
       const linkButtonText = await page.evaluate(el => el.textContent.trim(), clickLinkButton);
       const linkButtonClasses = await page.evaluate(el => el.className, clickLinkButton);
@@ -219,25 +219,25 @@ async function processQuest(token, quest, proxy = null) {
       if (linkButtonText.toLowerCase().includes('click the link')) {
         await clickLinkButton.click();
         console.log('Clicked "Click the Link" button');
-        await new Promise(resolve => setTimeout(resolve, 15000));
+        await new Promise(resolve => setTimeout(resolve, 20000)); // နှိပ်ပြီး စောင့်ဆိုင်းချိန်ကို တိုးပေးထားပါတယ်
 
         // စာမျက်နှာကို ၁ ကြိမ်ပဲ Reload လုပ်မယ်
         console.log('Reloading the current quest page (Attempt 1/1)...');
         await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
-        await new Promise(resolve => setTimeout(resolve, 30000));
+        await new Promise(resolve => setTimeout(resolve, 30000)); // Reload ပြီး စောင့်ဆိုင်းချိန်ကို တိုးပေးထားပါတယ်
       } else {
         console.log(`Found element does not have the text "Click the Link": "${linkButtonText}". Skipping to Claim Reward...`);
       }
     } else {
-      console.log('Could not find "Click the Link" button with selector "a[class*="btn-accent"]"');
+      console.log('Could not find "Click the Link" button with selector "button[class*="btn-primary-opacity-40"]"');
     }
 
-    // အဆင့် ၄: Reload ၁ ကြိမ်ပြီးမှ Claim Reward ကို ရှာပြီး နှိပ်မယ်
+    // အဆင့် ၂: Reload ၁ ကြိမ်ပြီးမှ "Claim Reward" ခလုတ်ကို ရှာပြီး နှိပ်မယ်
     let claimButton = null;
     for (let attempt = 1; attempt <= 3; attempt++) {
       console.log(`Attempt ${attempt}: Looking for "Claim Reward" button after 1 reload...`);
       try {
-        claimButton = await waitForSelectorWithRetry(page, 'button.btn-primary');
+        claimButton = await waitForSelectorWithRetry(page, 'button[class*="btn-primary"][class*="rounded-full"]'); // "Claim Reward" ခလုတ်အတွက် selector ကို ပိုတိကျအောင် လုပ်ထားပါတယ်
         break;
       } catch (error) {
         console.log(`Attempt ${attempt} failed to find "Claim Reward" button: ${error.message}`);
@@ -251,20 +251,26 @@ async function processQuest(token, quest, proxy = null) {
       }
     }
 
-    const buttonText = claimButton ? await page.evaluate(btn => btn.textContent.trim(), claimButton) : null;
+    if (claimButton) {
+      const buttonText = await page.evaluate(btn => btn.textContent.trim(), claimButton);
+      const buttonClasses = await page.evaluate(btn => btn.className, claimButton);
+      console.log(`Found "Claim Reward" button with text: "${buttonText}" and classes: "${buttonClasses}"`);
 
-    if (claimButton && buttonText.toLowerCase().includes('claim')) {
-      const isDisabled = await page.evaluate(btn => btn.disabled, claimButton);
-      if (!isDisabled) {
-        await claimButton.click();
-        console.log(`Quest ကို Claim လုပ်လိုက်ပါပြီ: ${quest.title} (ID: ${quest.id})`);
-        console.log(`Successfully claimed the reward for quest: ${quest.title} (ID: ${quest.id})!`);
-        await new Promise(resolve => setTimeout(resolve, 10000));
+      if (buttonText.toLowerCase().includes('claim')) {
+        const isDisabled = await page.evaluate(btn => btn.disabled, claimButton);
+        if (!isDisabled) {
+          await claimButton.click();
+          console.log(`Quest ကို Claim လုပ်လိုက်ပါပြီ: ${quest.title} (ID: ${quest.id})`);
+          console.log(`Successfully claimed the reward for quest: ${quest.title} (ID: ${quest.id})!`);
+          await new Promise(resolve => setTimeout(resolve, 15000)); // Claim ပြီး စောင့်ဆိုင်းချိန်ကို တိုးပေးထားပါတယ်
+        } else {
+          console.log(`Failed: Claim button is disabled for quest: ${quest.title} (ID: ${quest.id})`);
+        }
       } else {
-        console.log(`Failed: Claim button is disabled for quest: ${quest.title} (ID: ${quest.id})`);
+        console.log(`Found element does not have the text "Claim": "${buttonText}". Skipping...`);
       }
     } else {
-      console.log(`Failed: Could not find "Claim Reward" button or text does not include "claim" for quest: ${quest.title} (ID: ${quest.id})`);
+      console.log(`Failed: Could not find "Claim Reward" button for quest: ${quest.title} (ID: ${quest.id})`);
     }
   } catch (error) {
     console.error(`Quest ကို လုပ်ဆောင်ရာမှာ အမှားဖြစ်သွားပါတယ် ${quest.title} (ID: ${quest.id}):`, error.message);
@@ -287,8 +293,8 @@ async function processAllAccounts(accounts, proxies) {
       for (const quest of unclaimedQuests) {
         console.log(`Processing quest for ${username}: ${quest.title} (ID: ${quest.id}, Claimable: ${quest.isClaimable})`);
         await processQuest(token, quest, proxy);
-        console.log('Waiting 10 seconds before processing the next quest...');
-        await new Promise(resolve => setTimeout(resolve, 10000));
+        console.log('Waiting 15 seconds before processing the next quest...');
+        await new Promise(resolve => setTimeout(resolve, 15000));
       }
 
       console.log(`All unclaimed quests processed for ${username}!`);
@@ -300,8 +306,8 @@ async function processAllAccounts(accounts, proxies) {
       }
     }
 
-    console.log('Waiting 15 seconds before processing the next account...');
-    await new Promise(resolve => setTimeout(resolve, 15000));
+    console.log('Waiting 20 seconds before processing the next account...');
+    await new Promise(resolve => setTimeout(resolve, 20000));
   }
 }
 
