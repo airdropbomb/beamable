@@ -9,7 +9,7 @@ by btctrader
 `);
 
 const puppeteer = require('puppeteer');
-const fetch = require('node-fetch');
+const fetch = require('node-fetch'); // Explicitly require node-fetch
 const HttpsProxyAgent = require('https-proxy-agent');
 const fs = require('fs').promises;
 const path = require('path');
@@ -107,6 +107,9 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 // Fetch nonce from the page
 async function getNonce(cookie, agent) {
     try {
+        if (typeof fetch !== 'function') {
+            throw new Error('Fetch is not available. Ensure node-fetch is installed and imported correctly.');
+        }
         const url = 'https://hub.beamable.network/modules/aprildailies';
         const headers = { ...defaultHeaders, "Cookie": cookie };
         const request = await fetch(url, {
@@ -218,7 +221,7 @@ async function processTokenWithRetry(proxies, accountId, harborSession, maxRetri
 
             const currentUrl = page.url();
             if (currentUrl.includes('/onboarding/login')) {
-                console.log(`AccountTREEsession expired. Update harborSession in token.txt`);
+                console.log(`Account ${accountId}: Session expired. Update harborSession in token.txt`);
                 await browser.close();
                 return false;
             }
