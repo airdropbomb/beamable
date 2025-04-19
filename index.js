@@ -113,7 +113,7 @@ async function clickShowMoreButton(page, accountId, maxAttempts = 5) {
         try {
             // Scroll to the bottom of the page
             await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-            await delay(1000); // Wait for 1 second to ensure the page is fully scrolled
+            await delay(3000); // Wait for 3 second to ensure the page is fully scrolled
 
             // Find the "Show More" button
             const showMoreButton = await page.$('div.text-center button');
