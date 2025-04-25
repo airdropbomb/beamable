@@ -180,20 +180,20 @@ async function clickShowMoreButton(page, accountId, maxAttempts = 5) {
 async function findAndClickClaimButton(page, accountId) {
     console.log(`Account ${accountId}: Checking for Claim button...`);
     let claimButtonFound = false;
+    const maxAttempts = 3;
 
-    try {
-        // Wait for widget to load
-        await page.waitForSelector('#widget-467', { timeout: 120000 });
-        await page.waitForNetworkIdle({ timeout: 60000, idleTime: 1000 });
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            // Wait for widget to load
+            await page.waitForSelector('#widget-467', { timeout: 120000 });
+            await page.waitForNetworkIdle({ timeout: 60000, idleTime: 1000 });
 
-        // Selector for potential Claim buttons
-        const potentialButtonsSelector = '#widget-467 button:not([disabled]), #widget-467 button[data-action="claim"], #widget-467 button[class*="claim"]';
-        const maxAttempts = 3;
+            // Selector for potential Claim buttons
+            const potentialButtonsSelector = '#widget-467 button:not([disabled]), #widget-467 button[data-action="claim"], #widget-467 button[class*="claim"]';
 
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             // Scroll to bottom to ensure all elements are loaded
             await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-            await page.waitForTimeout(2000);
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Replace page.waitForTimeout
 
             const buttons = await page.$$(potentialButtonsSelector);
 
@@ -254,14 +254,17 @@ async function findAndClickClaimButton(page, accountId) {
                 console.log(`Account ${accountId}: No clickable Claim button found on attempt ${attempt}. Retrying...`);
                 await simulateScrolling(page);
                 await randomDelay(5000, 10000);
+                await page.reload({ waitUntil: 'networkidle2' }); // Refresh page for next attempt
             }
+        } catch (error) {
+            console.error(`Account ${accountId}: Error while checking for Claim button on attempt ${attempt}: ${error.message}`);
+            if (attempt === maxAttempts) {
+                console.log(`Account ${accountId}: No clickable Claim button found after all attempts.`);
+                break;
+            }
+            await randomDelay(5000, 10000);
+            await page.reload({ waitUntil: 'networkidle2' }); // Refresh page for next attempt
         }
-
-        if (!claimButtonFound) {
-            console.log(`Account ${accountId}: No clickable Claim button found after all attempts.`);
-        }
-    } catch (error) {
-        console.error(`Account ${accountId}: Error while checking for Claim button: ${error.message}`);
     }
 
     return claimButtonFound;
