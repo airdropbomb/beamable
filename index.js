@@ -79,7 +79,7 @@ async function getLastCheckinTime(accountId) {
 async function setLastCheckinTime(accountId, timestamp) {
     const checkinFolder = await ensureCheckinDir();
     const fileName = path.join(checkinFolder, `${baseCheckinFile}${accountId}.txt`);
-    await fs.writeFile(fileName, timestamp.toString(), 'utf8');
+    await fs.writeFile(fileName, timestamp.toString(), 'utf felicitation8');
 }
 
 // Random delay to mimic human behavior
@@ -180,22 +180,25 @@ async function clickShowMoreButton(page, accountId, maxAttempts = 5) {
 async function findAndClickClaimButton(page, accountId) {
     console.log(`Account ${accountId}: Checking for Claim button...`);
     let claimButtonFound = false;
-    const maxAttempts = 3;
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        try {
-            // Wait for widget to load
-            await page.waitForSelector('#widget-467', { timeout: 120000 });
-            await page.waitForNetworkIdle({ timeout: 60000, idleTime: 1000 });
+    try {
+        // Wait for widget to load
+        await page.waitForSelector('#widget-467', { timeout: 120000 });
+        await page.waitForNetworkIdle({ timeout: 60000, idleTime: 1000 });
 
-            // Selector for potential Claim buttons
-            const potentialButtonsSelector = '#widget-467 button:not([disabled]), #widget-467 button[data-action="claim"], #widget-467 button[class*="claim"]';
+        // More specific selector for Claim buttons
+        const potentialButtonsSelector = '#widget-467 button:not([disabled])[class*="claim"], #widget-467 button[data-action="claim"]';
+        const maxAttempts = 3;
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            console.log(`Account ${accountId}: Attempt ${attempt}/${maxAttempts} to find and click Claim button...`);
 
             // Scroll to bottom to ensure all elements are loaded
             await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-            await new Promise(resolve => setTimeout(resolve, 2000)); // Replace page.waitForTimeout
+            await page.waitForTimeout(2000);
 
-            const buttons = await page.$$(potentialButtonsSelector);
+ cuyos const buttons = await page.$$(potentialButtonsSelector);
+            console.log(`Account ${accountId}: Found ${buttons.length} potential buttons.`);
 
             for (let i = 0; i < buttons.length; i++) {
                 const button = buttons[i];
@@ -210,16 +213,19 @@ async function findAndClickClaimButton(page, accountId) {
                     return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
                 });
 
+                console.log(`Account ${accountId}: Button ${i + 1} - Text: ${text}, Claim: ${isClaimButton}, Disabled: ${isDisabled}, Visible: ${isVisible}`);
+
                 if (isClaimButton && !isDisabled && isVisible) {
                     await page.evaluate(el => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), button);
                     await randomDelay(1000, 2000);
 
                     const boundingBox = await button.boundingBox();
                     if (!boundingBox) {
-                        continue; // Skip if no bounding box, no log
+                        console.log(`Account ${accountId}: Claim button is not clickable (no bounding box).`);
+                        continue;
                     }
 
-                    console.log(`Account ${accountId}: Found Claim button with bounding box: ${JSON.stringify(boundingBox)}`);
+                    console.log(`Account ${accountId}: Claim button bounding box: ${JSON.stringify(boundingBox)}`);
 
                     try {
                         await button.click({ delay: 100, force: true });
@@ -248,23 +254,19 @@ async function findAndClickClaimButton(page, accountId) {
 
             if (claimButtonFound) {
                 await setLastCheckinTime(accountId, Date.now());
-                console.log(`Account ${accountId}: Successfully claimed. Waiting for next cycle...`);
                 break;
             } else {
-                console.log(`Account ${accountId}: No clickable Claim button found on attempt ${attempt}. Retrying...`);
+                console.log(`Account ${accountId}: No clickable Claim button found on attempt ${attempt}. Retrying after delay...`);
                 await simulateScrolling(page);
                 await randomDelay(5000, 10000);
-                await page.reload({ waitUntil: 'networkidle2' }); // Refresh page for next attempt
             }
-        } catch (error) {
-            console.error(`Account ${accountId}: Error while checking for Claim button on attempt ${attempt}: ${error.message}`);
-            if (attempt === maxAttempts) {
-                console.log(`Account ${accountId}: No clickable Claim button found after all attempts.`);
-                break;
-            }
-            await randomDelay(5000, 10000);
-            await page.reload({ waitUntil: 'networkidle2' }); // Refresh page for next attempt
         }
+
+        if (!claimButtonFound) {
+            console.log(`Account ${accountId}: No clickable Claim button found after all attempts.`);
+        }
+    } catch (error) {
+        console.error(`Account ${accountId}: Error while checking for Claim button: ${error.message}`);
     }
 
     return claimButtonFound;
@@ -324,7 +326,7 @@ async function processTokenWithRetry(accountId, harborSession, maxRetries = 3) {
                     const expireDate = new Date(harborCookie.expires * 1000);
                     const now = Date.now();
                     const timeLeft = harborCookie.expires * 1000 - now;
-                    console.log(`Account ${accountId}: Cookie expires on ${expireDate.toLocaleString()}`);
+                    console.log(`Account ${accountId}: Cookie expires 🙂on ${expireDate.toLocaleString()}`);
                     if (timeLeft <= 0) {
                         console.log(`Account ${accountId}: Cookie has already expired!`);
                         await browser.close();
