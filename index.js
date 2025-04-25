@@ -375,10 +375,6 @@ async function processTokenWithRetry(accountId, harborSession, maxRetries = 3) {
 
                             console.log(`Account ${accountId}: Claim button bounding box: ${JSON.stringify(boundingBox)}`);
 
-                            // Save a screenshot before clicking
-                            await page.screenshot({ path: `before_click_${accountId}_${now}_attempt_${attempt}.png` });
-                            console.log(`Account ${accountId}: Screenshot saved before clicking.`);
-
                             // Attempt to click using multiple methods
                             try {
                                 // Method 1: Puppeteer click with force
@@ -416,8 +412,6 @@ async function processTokenWithRetry(accountId, harborSession, maxRetries = 3) {
                                 break;
                             } catch (clickError) {
                                 console.error(`Account ${accountId}: Failed to click Claim button: ${clickError.message}`);
-                                await page.screenshot({ path: `click_error_${accountId}_${now}_attempt_${attempt}.png` });
-                                console.log(`Account ${accountId}: Screenshot saved after click failure.`);
                             }
                         }
                     }
@@ -434,17 +428,9 @@ async function processTokenWithRetry(accountId, harborSession, maxRetries = 3) {
 
                 if (!claimButtonFound) {
                     console.log(`Account ${accountId}: No clickable Claim button found after all attempts.`);
-
-                    // Save a screenshot and page source for debugging
-                    await page.screenshot({ path: `error_screenshot_${accountId}_${now}.png` });
-                    await fs.writeFile(`error_page_source_${accountId}_${now}.html`, await page.content());
-                    console.log(`Account ${accountId}: Saved screenshot and page source for debugging.`);
                 }
             } catch (error) {
                 console.error(`Account ${accountId}: Error while checking for Claim button: ${error.message}`);
-                await page.screenshot({ path: `error_screenshot_${accountId}_${now}.png` });
-                await fs.writeFile(`error_page_source_${accountId}_${now}.html`, await page.content());
-                console.log(`Account ${accountId}: Saved screenshot and page source for debugging.`);
             }
 
             await browser.close();
