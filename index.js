@@ -79,7 +79,7 @@ async function getLastCheckinTime(accountId) {
 async function setLastCheckinTime(accountId, timestamp) {
     const checkinFolder = await ensureCheckinDir();
     const fileName = path.join(checkinFolder, `${baseCheckinFile}${accountId}.txt`);
-    await fs.writeFile(fileName, timestamp.toString(), 'utf felicitation8');
+    await fs.writeFile(fileName, timestamp.toString(), 'utf8');
 }
 
 // Random delay to mimic human behavior
@@ -197,7 +197,7 @@ async function findAndClickClaimButton(page, accountId) {
             await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
             await page.waitForTimeout(2000);
 
- cuyos const buttons = await page.$$(potentialButtonsSelector);
+            const buttons = await page.$$(potentialButtonsSelector);
             console.log(`Account ${accountId}: Found ${buttons.length} potential buttons.`);
 
             for (let i = 0; i < buttons.length; i++) {
@@ -326,7 +326,7 @@ async function processTokenWithRetry(accountId, harborSession, maxRetries = 3) {
                     const expireDate = new Date(harborCookie.expires * 1000);
                     const now = Date.now();
                     const timeLeft = harborCookie.expires * 1000 - now;
-                    console.log(`Account ${accountId}: Cookie expires 🙂on ${expireDate.toLocaleString()}`);
+                    console.log(`Account ${accountId}: Cookie expires on ${expireDate.toLocaleString()}`);
                     if (timeLeft <= 0) {
                         console.log(`Account ${accountId}: Cookie has already expired!`);
                         await browser.close();
