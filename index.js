@@ -176,6 +176,97 @@ async function clickShowMoreButton(page, accountId, maxAttempts = 5) {
     }
 }
 
+// Function to find and click Claim button
+async function findAndClickClaimButton(page, accountId) {
+    console.log(`Account ${accountId}: Checking for Claim button...`);
+    let claimButtonFound = false;
+
+    try {
+        // Wait for widget to load
+        await page.waitForSelector('#widget-467', { timeout: 120000 });
+        await page.waitForNetworkIdle({ timeout: 60000, idleTime: 1000 });
+
+        // Selector for potential Claim buttons
+        const potentialButtonsSelector = '#widget-467 button:not([disabled]), #widget-467 button[data-action="claim"], #widget-467 button[class*="claim"]';
+        const maxAttempts = 3;
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            // Scroll to bottom to ensure all elements are loaded
+            await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+            await page.waitForTimeout(2000);
+
+            const buttons = await page.$$(potentialButtonsSelector);
+
+            for (let i = 0; i < buttons.length; i++) {
+                const button = buttons[i];
+                const text = await button.evaluate(el => {
+                    const childText = el.querySelector('span, div, p')?.textContent || el.textContent;
+                    return childText.trim().toLowerCase();
+                });
+                const isClaimButton = text.includes('claim');
+                const isDisabled = await button.evaluate(el => el.hasAttribute('disabled') || el.className.includes('opacity-50') || el.className.includes('disabled'));
+                const isVisible = await button.evaluate(el => {
+                    const style = window.getComputedStyle(el);
+                    return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+                });
+
+                if (isClaimButton && !isDisabled && isVisible) {
+                    await page.evaluate(el => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), button);
+                    await randomDelay(1000, 2000);
+
+                    const boundingBox = await button.boundingBox();
+                    if (!boundingBox) {
+                        continue; // Skip if no bounding box, no log
+                    }
+
+                    console.log(`Account ${accountId}: Found Claim button with bounding box: ${JSON.stringify(boundingBox)}`);
+
+                    try {
+                        await button.click({ delay: 100, force: true });
+                        console.log(`Account ${accountId}: Clicked Claim button using Puppeteer click.`);
+                        await page.waitForNetworkIdle({ timeout: 10000, idleTime: 500 }).catch(() => {});
+
+                        const newText = await button.evaluate(el => el.textContent.trim().toLowerCase());
+                        if (!newText.includes('claim')) {
+                            console.log(`Account ${accountId}: Button text changed to "${newText}", assuming click was successful.`);
+                            claimButtonFound = true;
+                            break;
+                        }
+
+                        await page.evaluate(el => {
+                            const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+                            el.dispatchEvent(event);
+                        }, button);
+                        console.log(`Account ${accountId}: Clicked Claim button using JavaScript click.`);
+                        claimButtonFound = true;
+                        break;
+                    } catch (clickError) {
+                        console.error(`Account ${accountId}: Failed to click Claim button: ${clickError.message}`);
+                    }
+                }
+            }
+
+            if (claimButtonFound) {
+                await setLastCheckinTime(accountId, Date.now());
+                console.log(`Account ${accountId}: Successfully claimed. Waiting for next cycle...`);
+                break;
+            } else {
+                console.log(`Account ${accountId}: No clickable Claim button found on attempt ${attempt}. Retrying...`);
+                await simulateScrolling(page);
+                await randomDelay(5000, 10000);
+            }
+        }
+
+        if (!claimButtonFound) {
+            console.log(`Account ${accountId}: No clickable Claim button found after all attempts.`);
+        }
+    } catch (error) {
+        console.error(`Account ${accountId}: Error while checking for Claim button: ${error.message}`);
+    }
+
+    return claimButtonFound;
+}
+
 // Process a single account with retries
 async function processTokenWithRetry(accountId, harborSession, maxRetries = 3) {
     const lastCheckinTime = await getLastCheckinTime(accountId);
@@ -330,125 +421,9 @@ async function processTokenWithRetry(accountId, harborSession, maxRetries = 3) {
             console.log(`Account ${accountId}: Checking for Show More button...`);
             await clickShowMoreButton(page, accountId);
 
-            console.log(`Account ${accountId}: Checking for Claim button...`);
-            let claimButtonFound = false;
-
-            try {
-                // Wait for the widget container to load
-                await page.waitForSelector('#widget-467', { timeout: 120000 });
-                await page.waitForNetworkIdle({ timeout: 60000, idleTime: 1000 });
-
-                // Simplified selector for potential Claim buttons
-                const potentialButtonsSelector = '#widget-467 button';
-                const maxAttempts = 3;
-
-                for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-                    console.log(`Account ${accountId}: Attempt ${attempt}/${maxAttempts} to find and click Claim button...`);
-
-                    // Find all buttons within the widget
-                    const buttons = await page.$$(potentialButtonsSelector);
-                    console.log(`Account ${accountId}: Found ${buttons.length} potential buttons.`);
-
-                    for (let i = 0; i < buttons.length; i++) {
-                        const button = buttons[i];
-                        const text = await button.evaluate(el => el.textContent.trim().toLowerCase());
-                        const isClaimButton = text.includes('claim');
-                        const isDisabled = await button.evaluate(el => el.hasAttribute('disabled') || el.className.includes('opacity-50') || el.className.includes('disabled'));
-                        const isVisible = await button.evaluate(el => {
-                            const style = window.getComputedStyle(el);
-                            return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
-                        });
-
-                        console.log(`Account ${accountId}: Button ${i + 1} - Text: ${text}, Claim: ${isClaimButton}, Disabled: ${isDisabled}, Visible: ${isVisible}`);
-
-                        if (isClaimButton && !isDisabled && isVisible) {
-                            // Scroll to the button
-                            await page.evaluate(el => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), button);
-                            await randomDelay(1000, 2000); // Wait for DOM to settle
-
-                            // Verify clickability
-                            const boundingBox = await button.boundingBox();
-                            if (!boundingBox) {
-                                console.log(`Account ${accountId}: Claim button is not clickable (no bounding box).`);
-                                continue;
-                            }
-
-                            console.log(`Account ${accountId}: Claim button bounding box: ${JSON.stringify(boundingBox)}`);
-
-                            // Save a screenshot before clicking
-                            await page.screenshot({ path: `before_click_${accountId}_${now}_attempt_${attempt}.png` });
-                            console.log(`Account ${accountId}: Screenshot saved before clicking.`);
-
-                            // Attempt to click using multiple methods
-                            try {
-                                // Method 1: Puppeteer click with force
-                                await button.click({ delay: 100, force: true });
-                                console.log(`Account ${accountId}: Clicked Claim button using Puppeteer click.`);
-
-                                // Verify click by waiting for network activity or DOM change
-                                await page.waitForNetworkIdle({ timeout: 10000, idleTime: 500 }).catch(() => {
-                                    console.log(`Account ${accountId}: No network activity after click, proceeding...`);
-                                });
-
-                                // Check if the button text or state changed (e.g., "Claim" to "Claimed")
-                                const newText = await button.evaluate(el => el.textContent.trim().toLowerCase());
-                                if (!newText.includes('claim')) {
-                                    console.log(`Account ${accountId}: Button text changed to "${newText}", assuming click was successful.`);
-                                    claimButtonFound = true;
-                                    break;
-                                }
-
-                                // Method 2: JavaScript click as fallback
-                                await page.evaluate(el => el.click(), button);
-                                console.log(`Account ${accountId}: Clicked Claim button using JavaScript click.`);
-
-                                // Verify again
-                                await page.waitForNetworkIdle({ timeout: 10000, idleTime: 500 }).catch(() => {});
-                                const finalText = await button.evaluate(el => el.textContent.trim().toLowerCase());
-                                if (!finalText.includes('claim')) {
-                                    console.log(`Account ${accountId}: Button text changed to "${finalText}", assuming click was successful.`);
-                                    claimButtonFound = true;
-                                    break;
-                                }
-
-                                console.log(`Account ${accountId}: Click attempt completed, but button state did not change. Assuming success.`);
-                                claimButtonFound = true;
-                                break;
-                            } catch (clickError) {
-                                console.error(`Account ${accountId}: Failed to click Claim button: ${clickError.message}`);
-                                await page.screenshot({ path: `click_error_${accountId}_${now}_attempt_${attempt}.png` });
-                                console.log(`Account ${accountId}: Screenshot saved after click failure.`);
-                            }
-                        }
-                    }
-
-                    if (claimButtonFound) {
-                        await setLastCheckinTime(accountId, now);
-                        break;
-                    } else {
-                        console.log(`Account ${accountId}: No clickable Claim button found on attempt ${attempt}. Retrying after delay...`);
-                        await simulateScrolling(page);
-                        await randomDelay(5000, 10000);
-                    }
-                }
-
-                if (!claimButtonFound) {
-                    console.log(`Account ${accountId}: No clickable Claim button found after all attempts.`);
-
-                    // Save a screenshot and page source for debugging
-                    await page.screenshot({ path: `error_screenshot_${accountId}_${now}.png` });
-                    await fs.writeFile(`error_page_source_${accountId}_${now}.html`, await page.content());
-                    console.log(`Account ${accountId}: Saved screenshot and page source for debugging.`);
-                }
-            } catch (error) {
-                console.error(`Account ${accountId}: Error while checking for Claim button: ${error.message}`);
-                await page.screenshot({ path: `error_screenshot_${accountId}_${now}.png` });
-                await fs.writeFile(`error_page_source_${accountId}_${now}.html`, await page.content());
-                console.log(`Account ${accountId}: Saved screenshot and page source for debugging.`);
-            }
-
+            const success = await findAndClickClaimButton(page, accountId);
             await browser.close();
-            return claimButtonFound;
+            return success;
         } catch (error) {
             console.error(`Account ${accountId} - Attempt ${attempt} failed: ${error.message}`);
             if (browser) await browser.close();
