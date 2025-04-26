@@ -180,7 +180,7 @@ async function clickShowMoreButton(page, accountId, maxAttempts = 5) {
             console.log(error(`Account ${highlight(accountId)}: Error while clicking "Show More": ${err.message}`));
             break;
         }
-        attempts++; // Fixed typo: changed 'periods++' to 'attempts++'
+        attempts++; // Corrected from 'periods++'
     }
 
     if (showMoreFound) {
@@ -456,7 +456,7 @@ async function processBoxOpen(accountId, harborSession, maxRetries = 3) {
             console.log(success(`Account ${highlight(accountId)}: Successfully opened boxes.`));
             await browser.close();
             return true;
-        } else {
+        } catch (err) {
             console.log(error(`Account ${highlight(accountId)} - Attempt ${attempt} failed: ${err.message}`));
             if (browser) await browser.close();
             if (attempt === maxRetries) {
