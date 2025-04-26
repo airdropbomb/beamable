@@ -412,7 +412,7 @@ async function processBoxOpen(accountId, harborSession, maxRetries = 3) {
                         await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
                         try {
                             inputElement = await page.waitForSelector('input[type="number"].btn-primary.max-w-24', { timeout: 40000 });
-                            console.log(success(`Account ${highlight(accountthe Open Amount input after page refresh.`));
+                            console.log(success(`Account ${highlight(accountId)}: Found Open Amount input after page refresh.`));
                             break;
                         } catch (refreshErr) {
                             console.log(error(`Account ${highlight(accountId)}: Open Amount input still not found after refresh: ${refreshErr.message}`));
