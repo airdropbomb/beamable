@@ -13,7 +13,7 @@ const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const fs = require('fs').promises;
 const path = require('path');
 const readline = require('readline');
-const chalk = require('chalk'); // Chalk for colored console output
+const chalk = require('chalk');
 
 // Use the stealth plugin to avoid detection
 puppeteer.use(StealthPlugin());
@@ -30,7 +30,6 @@ const rl = readline.createInterface({
 
 // Color definitions with fallback for compatibility
 const info = chalk.cyan; // Cyan for informational messages
-const success = chalk.green; // Green for successful actions
 const error = chalk.red; // Red for errors
 const warning = chalk.yellow; // Yellow for warnings or cautions
 const prompt = chalk.magenta; // Magenta for user prompts
@@ -63,7 +62,7 @@ async function getTokenData() {
             if (key === 'harborSession') {
                 tokenData[accountId] = value;
                 const maskedValue = value.substring(0, 5) + '****' + value.substring(value.length - 5);
-                console.log(success(`Account ${highlight(accountId)}: Cookie loaded - ${maskedValue}`));
+                console.log(chalk.green(`Account ${highlight(accountId)}: Cookie loaded - ${maskedValue}`));
             } else {
                 console.log(error(`Account ${highlight(accountId)}: Invalid key (expected harborSession, got ${key})`));
             }
@@ -184,7 +183,7 @@ async function clickShowMoreButton(page, accountId, maxAttempts = 5) {
     }
 
     if (showMoreFound) {
-        console.log(success(`Account ${highlight(accountId)}: Successfully clicked all "Show More" buttons.`));
+        console.log(chalk.green(`Account ${highlight(accountId)}: Successfully clicked all "Show More" buttons.`));
     } else {
         console.log(info(`Account ${highlight(accountId)}: No more "Show More" buttons to click.`));
     }
@@ -281,7 +280,7 @@ async function processDailyClaim(accountId, harborSession, maxRetries = 3) {
                     await page.evaluate(el => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), button);
                     await randomDelay(1000, 2000);
                     await button.click({ delay: 100 });
-                    console.log(success(`Account ${highlight(accountId)}: Clicked Claim button for ${dayText}.`));
+                    console.log(chalk.green(`Account ${highlight(accountId)}: Clicked Claim button for ${dayText}.`));
 
                     await page.waitForNetworkIdle({ timeout: 15000, idleTime: 500 }).catch(() => {});
                     const newText = await button.evaluate(el => el.textContent.trim().toLowerCase());
@@ -290,7 +289,7 @@ async function processDailyClaim(accountId, harborSession, maxRetries = 3) {
                         await page.waitForNetworkIdle({ timeout: 15000, idleTime: 500 }).catch(() => {});
                     }
 
-                    console.log(success(`Account ${highlight(accountId)}: Claimed reward for ${dayText}.`));
+                    console.log(chalk.green(`Account ${highlight(accountId)}: Claimed reward for ${dayText}.`));
                     await setLastCheckinTime(accountId, now);
                     claimButtonFound = true;
                     break;
@@ -375,7 +374,7 @@ async function processBoxOpen(accountId, harborSession, maxRetries = 3) {
             for (let elementAttempt = 1; elementAttempt <= maxElementRetries; elementAttempt++) {
                 try {
                     inputElement = await page.waitForSelector('input[type="number"].btn-primary.max-w-24', { timeout: 40000 });
-                    console.log(info(`Account ${highlight(accountId)}: Found Open Amount input.`));
+                    console.log(info(`Account ${highlight柯accountId)}: Found Open Amount input.`));
                     break;
                 } catch (err) {
                     console.log(error(`Account ${highlight(accountId)}: Open Amount input not found on attempt ${elementAttempt}: ${err.message}`));
@@ -383,7 +382,7 @@ async function processBoxOpen(accountId, harborSession, maxRetries = 3) {
                         await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
                         try {
                             inputElement = await page.waitForSelector('input[type="number"].btn-primary.max-w-24', { timeout: 40000 });
-                            console.log(success(`Account ${highlight(accountId)}: Found Open Amount input after page refresh.`));
+                            console.log(chalk.green(`Account ${highlight(accountId)}: Found Open Amount input after page refresh.`));
                             break;
                         } catch (refreshErr) {
                             console.log(error(`Account ${highlight(accountId)}: Open Amount input still not found after refresh: ${refreshErr.message}`));
@@ -404,7 +403,7 @@ async function processBoxOpen(accountId, harborSession, maxRetries = 3) {
                 input.dispatchEvent(new Event('input', { bubbles: true }));
                 input.dispatchEvent(new Event('change', { bubbles: true }));
             }, quantity);
-            console.log(success(`Account ${highlight(accountId)}: Set Open Amount to ${quantity}.`));
+            console.log(chalk.green(`Account ${highlight(accountId)}: Set Open Amount to ${quantity}.`));
 
             let buttonElement;
             for (let elementAttempt = 1; elementAttempt <= maxElementRetries; elementAttempt++) {
@@ -429,7 +428,7 @@ async function processBoxOpen(accountId, harborSession, maxRetries = 3) {
                     el.dispatchEvent(new Event(eventType, { bubbles: true }));
                 });
             }, buttonElement);
-            console.log(success(`Account ${highlight(accountId)}: Clicked the Open button.`));
+            console.log(chalk.green(`Account ${highlight(accountId)}: Clicked the Open button.`));
 
             let newQuantity = quantity;
             const maxQuantityCheckAttempts = 10;
@@ -440,7 +439,7 @@ async function processBoxOpen(accountId, harborSession, maxRetries = 3) {
                     return quantityElement ? parseInt(quantityElement.innerText.match(/Quantity:\s*(\d+)/)?.[1] || 0, 10) : 0;
                 });
                 if (newQuantity < quantity) {
-                    console.log(success(`Account ${highlight(accountId)}: Quantity decreased to ${newQuantity}.`));
+                    console.log(chalk.green(`Account ${highlight(accountId)}: Quantity decreased to ${newQuantity}.`));
                     break;
                 }
                 console.log(info(`Account ${highlight(accountId)}: Quantity check attempt ${quantityCheckAttempts + 1}/${maxQuantityCheckAttempts} - quantity still ${newQuantity}.`));
@@ -453,7 +452,7 @@ async function processBoxOpen(accountId, harborSession, maxRetries = 3) {
                 throw new Error('Action did not register');
             }
 
-            console.log(success(`Account ${highlight(accountId)}: Successfully opened boxes.`));
+            console.log(chalk.green(`Account ${highlight(accountId)}: Successfully opened boxes.`));
             await browser.close();
             return true;
         } catch (err) {
@@ -481,7 +480,7 @@ async function processToken(mode) {
                 console.log(highlight(`Processing account: ${accountId} (Daily Claim)`));
                 const success = await processDailyClaim(accountId, tokenData[accountId]);
                 if (success) {
-                    console.log(success(`Account ${highlight(accountId)}: Claimed successfully.`));
+                    console.log(chalk.green(`Account ${highlight(accountId)}: Claimed successfully.`));
                 } else {
                     console.log(warning(`Account ${highlight(accountId)}: No action taken or failed.`));
                     allAccountsProcessed = false;
@@ -497,13 +496,13 @@ async function processToken(mode) {
             console.log(highlight(`Processing account: ${accountId} (Box Open)`));
             const success = await processBoxOpen(accountId, tokenData[accountId]);
             if (success) {
-                console.log(success(`Account ${highlight(accountId)}: Processed successfully.`));
+                console.log(chalk.green(`Account ${highlight(accountId)}: Processed successfully.`));
             } else {
                 console.log(error(`Account ${highlight(accountId)}: Failed to process.`));
             }
             await randomDelay(10000, 20000);
         }
-        console.log(chalk.green(`All accounts processed. Script completed.`)); // Fixed: Use chalk.green directly
+        console.log(chalk.green('All accounts processed. Script completed.'));
     }
 }
 
