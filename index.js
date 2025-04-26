@@ -33,7 +33,7 @@ const info = chalk.cyan; // Cyan for informational messages
 const error = chalk.red; // Red for errors
 const warning = chalk.yellow; // Yellow for warnings or cautions
 const prompt = chalk.magenta; // Magenta for user prompts
-const highlight = chalk.bold.white || chalk.bold; // Fallback to bold if white is unavailable
+const highlight = chalk.white.bold; // Works with chalk v4
 
 // Ensure check-in directory exists (for Daily Claim)
 async function ensureCheckinDir() {
