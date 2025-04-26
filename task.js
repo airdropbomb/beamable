@@ -8,332 +8,369 @@ console.log(`
 by btctrader
 `);
 
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const fs = require('fs').promises;
+const path = require('path');
 
-// Base URL for the quests page
-const QUESTS_URL = 'https://hub.beamable.network/modules/questsold';
+// Use the stealth plugin to avoid detection
+puppeteer.use(StealthPlugin());
 
-// Function to read multiple proxies from proxies.txt (Optional)
-async function readProxies() {
-  try {
-    const data = await fs.readFile('proxies.txt', 'utf8');
-    const proxies = data.trim().split('\n').map(proxy => proxy.trim()).filter(proxy => proxy);
-    console.log(`Found ${proxies.length} proxies in proxies.txt`);
-    return proxies;
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      console.log('proxies.txt not found. Proceeding without proxies.');
-      return [];
-    }
-    console.error('Error reading proxies.txt:', error.message);
-    return [];
-  }
-}
+const tokenFile = 'token.txt';
 
-// Function to read multiple tokens from token.txt
-async function readTokens() {
-  try {
-    const data = await fs.readFile('token.txt', 'utf8');
-    const lines = data.trim().split('\n');
-    const accounts = [];
-
-    for (const line of lines) {
-      const parts = line.trim().split('=');
-      if (parts.length !== 3 || parts[1] !== 'harborSession') {
-        console.error(`Invalid token format in line: ${line}. Expected format: username=harborSession=token_value`);
-        continue;
-      }
-      const username = parts[0];
-      const token = parts[2];
-      if (!token) {
-        console.error(`Token is empty for username: ${username}`);
-        continue;
-      }
-      accounts.push({ username, token });
-      console.log(`Found account - Username: ${username}, Token: ${token}`);
-    }
-
-    if (accounts.length === 0) {
-      throw new Error('No valid accounts found in token.txt');
-    }
-
-    console.log(`Total accounts found: ${accounts.length}`);
-    return accounts;
-  } catch (error) {
-    console.error('Error reading token.txt:', error.message);
-    throw new Error('Failed to read tokens');
-  }
-}
-
-// Function to fetch unclaimed quests using Puppeteer
-async function fetchUnclaimedQuests(token, proxy = null) {
-  const browserArgs = [
-    '--no-sandbox',
-    '--disable-setuid-sandbox',
-    '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-  ];
-  if (proxy) {
-    browserArgs.push(`--proxy-server=${proxy}`);
-    console.log(`Using proxy: ${proxy}`);
-  }
-
-  const browser = await puppeteer.launch({
-    headless: true,
-    executablePath: '/usr/bin/chromium-browser',
-    args: browserArgs,
-    protocolTimeout: 60000,
-  });
-  const page = await browser.newPage();
-
-  try {
-    await page.setCookie({
-      name: 'harbor-session',
-      value: token,
-      domain: 'hub.beamable.network',
-      path: '/',
-      httpOnly: true,
-      secure: true,
-    });
-
-    console.log('Navigating to quests page:', QUESTS_URL);
-    await page.goto(QUESTS_URL, { waitUntil: 'networkidle2', timeout: 60000 });
-
-    await new Promise(resolve => setTimeout(resolve, 15000)); // စာမျက်နှာဖွင့်ပြီး စောင့်ဆိုင်းချိန်ကို တိုးပေးထားပါတယ်
-
-    const currentUrl = page.url();
-    console.log('Current URL after navigation:', currentUrl);
-    if (currentUrl.includes('/onboarding/login')) {
-      console.error('Redirected to login page. Token may be invalid or expired.');
-      throw new Error('Authentication failed: Redirected to login page');
-    }
-
-    const quests = await page.evaluate(() => {
-      const questElements = document.querySelectorAll('div.bg-content a[href*="/modules/questsold"]');
-      const unclaimedQuests = [];
-
-      console.log(`Found ${questElements.length} potential quest elements`);
-
-      questElements.forEach((element, index) => {
-    // Quest ရဲ့ ခေါင်းစဉ်ကို ရှာတယ်
-    const titleElement = element.querySelector('a.h3');
-    if (!titleElement) {
-      console.log(`Quest ${index}: Missing title, skipping`);
-      return;
-    }
-    const title = titleElement.innerText.trim();
-
-        const claimedElement = parent.querySelector('span.p3');
-        const isClaimed = claimedElement && claimedElement.innerText.trim().toLowerCase() === 'claimed';
-
-        const claimableButton = parent.querySelector('button[class*="btn-primary-opacity-40"]'); // ဒီမှာ selector ကို ပြောင်းထားပါတယ်
-        const isClaimable = !!claimableButton;
-
-        console.log(`Quest ${index}: Title="${title}", Is Claimed=${isClaimed}, Is Claimable=${isClaimable}`);
-
-        if (!isClaimed) {
-          const href = element.getAttribute('href');
-          const match = href && href.match(/\/questsold\/(\d+)/);
-          const questId = match ? match[1] : index;
-          unclaimedQuests.push({ id: questId, title, isClaimable });
-        }
-      });
-
-      return unclaimedQuests;
-    });
-
-    console.log(`Found ${quests.length} unclaimed quests`);
-    if (quests.length === 0) {
-      console.log('All quests are already claimed or no new quests are available.');
-    }
-    return quests;
-  } catch (error) {
-    console.error('Error fetching quests:', error.message);
-    throw error;
-  } finally {
-    await browser.close();
-  }
-}
-
-// Function to wait for an element with retries
-async function waitForSelectorWithRetry(page, selector, maxAttempts = 5, timeout = 60000) {
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+// Read token data from token.txt
+async function getTokenData() {
     try {
-      console.log(`Attempt ${attempt}: Waiting for selector "${selector}"`);
-      const element = await page.waitForSelector(selector, { timeout });
-      return element;
+        const data = await fs.readFile(tokenFile, 'utf8');
+        const lines = data.split('\n').map(line => line.trim()).filter(line => line);
+        const tokenData = {};
+
+        for (const line of lines) {
+            const parts = line.split('=');
+            if (parts.length < 3) {
+                console.error(`Invalid line format (not enough parts): ${line}`);
+                continue;
+            }
+            const accountId = parts[0];
+            const key = parts[1];
+            const value = parts.slice(2).join('=');
+
+            if (key === 'harborSession') {
+                tokenData[accountId] = value;
+                const maskedValue = value.substring(0, 5) + '****' + value.substring(value.length - 5);
+                console.log(`Account ${accountId}: Cookie loaded - ${maskedValue}`);
+            } else {
+                console.error(`Account ${accountId}: Invalid key (expected harborSession, got ${key})`);
+            }
+        }
+
+        if (Object.keys(tokenData).length === 0) {
+            throw new Error('No valid harbor-session cookies found in token.txt');
+        }
+        return tokenData;
     } catch (error) {
-      console.log(`Attempt ${attempt} failed: ${error.message}`);
-      if (attempt === maxAttempts) {
-        throw error;
-      }
-      console.log('Retrying after 15 seconds...'); // စောင့်ဆိုင်းချိန်ကို တိုးပေးထားပါတယ်
-      await new Promise(resolve => setTimeout(resolve, 15000));
+        console.error(`Error reading token.txt: ${error.message}`);
+        process.exit(1);
     }
-  }
 }
 
-// Function to process each unclaimed quest using Puppeteer
-async function processQuest(token, quest, proxy = null) {
-  const browserArgs = [
-    '--no-sandbox',
-    '--disable-setuid-sandbox',
-    '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-  ];
-  if (proxy) {
-    browserArgs.push(`--proxy-server=${proxy}`);
-    console.log(`Using proxy: ${proxy}`);
-  }
+// Random delay to mimic human behavior
+const randomDelay = (min, max) => {
+    const delay = Math.floor(Math.random() * (max - min + 1)) + min;
+    return new Promise(resolve => setTimeout(resolve, delay));
+};
 
-  const browser = await puppeteer.launch({
-    headless: true,
-    executablePath: '/usr/bin/chromium-browser',
-    args: browserArgs,
-    protocolTimeout: 60000,
-  });
-  const page = await browser.newPage();
+// Simulate human-like mouse movement
+async function simulateMouseMovement(page) {
+    const width = 1280;
+    const height = 720;
+    const x = Math.floor(Math.random() * width);
+    const y = Math.floor(Math.random() * height);
+    await page.mouse.move(x, y, { steps: 10 });
+    await randomDelay(500, 1500);
+}
 
-  try {
-    await page.setCookie({
-      name: 'harbor-session',
-      value: token,
-      domain: 'hub.beamable.network',
-      path: '/',
-      httpOnly: true,
-      secure: true,
+// Simulate human-like scrolling
+async function simulateScrolling(page) {
+    await page.evaluate(async () => {
+        await new Promise(resolve => {
+            let totalHeight = 0;
+            const distance = 100;
+            const timer = setInterval(() => {
+                const scrollHeight = document.body.scrollHeight;
+                window.scrollBy(0, distance);
+                totalHeight += distance;
+                if (totalHeight >= scrollHeight) {
+                    clearInterval(timer);
+                    resolve();
+                }
+            }, 100);
+        });
     });
+    await randomDelay(1000, 2000);
+}
 
-    const questDetailsUrl = `${QUESTS_URL}/${quest.id}`;
-    console.log(`Quest စာမျက်နှာကို သွားနေပါတယ်: ${questDetailsUrl}`);
-    await page.goto(questDetailsUrl, { waitUntil: 'networkidle2', timeout: 60000 });
-    await new Promise(resolve => setTimeout(resolve, 15000)); // စာမျက်နှာဖွင့်ပြီး စောင့်ဆိုင်းချိန်ကို တိုးပေးထားပါတယ်
+// Simulate human-like keyboard usage
+async function simulateKeyboardUsage(page) {
+    await page.keyboard.press('ArrowDown');
+    await randomDelay(500, 1000);
+    await page.keyboard.press('ArrowUp');
+    await randomDelay(500, 1000);
+}
 
-    // အဆင့် ၁: "Click the Link" ခလုတ်ကို ရှာပြီး နှိပ်မယ်
-    console.log('Looking for "Click the Link" button');
-    const clickLinkButton = await waitForSelectorWithRetry(page, 'button[class*="btn-primary-opacity-40"]'); // Selector ကို ပြောင်းထားပါတယ်
-    if (clickLinkButton) {
-      const linkButtonText = await page.evaluate(el => el.textContent.trim(), clickLinkButton);
-      const linkButtonClasses = await page.evaluate(el => el.className, clickLinkButton);
-      console.log(`Found "Click the Link" button with text: "${linkButtonText}" and classes: "${linkButtonClasses}"`);
-      
-      if (linkButtonText.toLowerCase().includes('click the link')) {
-        await clickLinkButton.click();
-        console.log('Clicked "Click the Link" button');
-        await new Promise(resolve => setTimeout(resolve, 20000)); // နှိပ်ပြီး စောင့်ဆိုင်းချိန်ကို တိုးပေးထားပါတယ်
+// Process a single account with retries
+async function processTokenWithRetry(accountId, harborSession, maxRetries = 3) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        console.log(`Account ${accountId} - Attempt ${attempt}/${maxRetries}`);
 
-        // စာမျက်နှာကို ၁ ကြိမ်ပဲ Reload လုပ်မယ်
-        console.log('Reloading the current quest page (Attempt 1/1)...');
-        await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
-        await new Promise(resolve => setTimeout(resolve, 30000)); // Reload ပြီး စောင့်ဆိုင်းချိန်ကို တိုးပေးထားပါတယ်
-      } else {
-        console.log(`Found element does not have the text "Click the Link": "${linkButtonText}". Skipping to Claim Reward...`);
-      }
-    } else {
-      console.log('Could not find "Click the Link" button with selector "button[class*="btn-primary-opacity-40"]"');
-    }
+        let browser;
+        try {
+            browser = await puppeteer.launch({
+                headless: true,
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-gpu',
+                    '--disable-dev-shm-usage',
+                    '--window-size=1280,720',
+                ],
+                timeout: 60000
+            });
+            const page = await browser.newPage();
 
-    // အဆင့် ၂: Reload ၁ ကြိမ်ပြီးမှ "Claim Reward" ခလုတ်ကို ရှာပြီး နှိပ်မယ်
-    let claimButton = null;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      console.log(`Attempt ${attempt}: Looking for "Claim Reward" button after 1 reload...`);
-      try {
-        claimButton = await waitForSelectorWithRetry(page, 'button[class*="btn-primary"][class*="rounded-full"]'); // "Claim Reward" ခလုတ်အတွက် selector ကို ပိုတိကျအောင် လုပ်ထားပါတယ်
-        break;
-      } catch (error) {
-        console.log(`Attempt ${attempt} failed to find "Claim Reward" button: ${error.message}`);
-        if (attempt === 3) {
-          console.log(`Failed: Could not find "Claim Reward" button after 3 attempts for quest: ${quest.title} (ID: ${quest.id})`);
-          return;
+            await page.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
+
+            console.log(`Account ${accountId}: Setting cookie...`);
+            await page.setCookie({
+                name: 'harbor-session',
+                value: harborSession,
+                domain: 'hub.beamable.network',
+                path: '/',
+                httpOnly: true,
+                secure: true
+            });
+
+            console.log(`Account ${accountId}: Navigating to Profile page...`);
+            await page.goto('https://hub.beamable.network/modules/profile/5456', { waitUntil: 'networkidle2', timeout: 180000 });
+
+            await randomDelay(5000, 8000);
+            await simulateMouseMovement(page);
+            await simulateScrolling(page);
+            await simulateKeyboardUsage(page);
+
+            let currentUrl = page.url();
+            console.log(`Account ${accountId}: Current URL: ${currentUrl}`);
+
+            if (currentUrl.includes('/onboarding/login') || currentUrl.includes('/onboarding/confirm')) {
+                console.log(`Account ${accountId}: Session expired. Please update harborSession cookie manually in token.txt using login link from email.`);
+                await browser.close();
+                return false;
+            }
+
+            console.log(`Account ${accountId}: Processing Open Amount...`);
+
+            try {
+                // Wait for network idle to ensure the page is fully loaded
+                await page.waitForNetworkIdle({ timeout: 60000, idleTime: 1000 }).catch(() => {
+                    console.log(`Account ${accountId}: Network idle wait timed out, proceeding anyway...`);
+                });
+
+                // Wait for the "BMB Box" text to ensure the relevant section is loaded
+                await page.waitForFunction(() => document.body.innerText.includes('BMB Box'), { timeout: 60000 })
+                    .catch(async () => {
+                        console.log(`Account ${accountId}: "BMB Box" text not found on page. Saving debug info...`);
+                        await page.screenshot({ path: `error_${accountId}_bmb_box.png` });
+                        const html = await page.content();
+                        await fs.writeFile(`error_${accountId}_bmb_box.html`, html);
+                        throw new Error('"BMB Box" text not found');
+                    });
+
+                // Get the quantity of BMB Boxes
+                let quantity = 0;
+                try {
+                    quantity = await page.evaluate(() => {
+                        const quantityElement = Array.from(document.querySelectorAll('div')).find(el => el.innerText.includes('Quantity:'));
+                        if (quantityElement) {
+                            const match = quantityElement.innerText.match(/Quantity:\s*(\d+)/);
+                            return match ? parseInt(match[1], 10) : 0;
+                        }
+                        return 0;
+                    });
+                    console.log(`Account ${accountId}: Found quantity: ${quantity}`);
+                } catch (error) {
+                    console.log(`Account ${accountId}: Failed to find quantity: ${error.message}`);
+                    throw new Error('Could not determine the quantity of BMB Boxes');
+                }
+
+                if (quantity === 0) {
+                    console.log(`Account ${accountId}: No BMB Boxes available to open. Skipping...`);
+                    await browser.close();
+                    return true; // Treat as success since there are no boxes to open
+                }
+
+                // Find the "Open Amount" input element
+                let inputElement = null;
+                const maxElementRetries = 3;
+                for (let elementAttempt = 1; elementAttempt <= maxElementRetries; elementAttempt++) {
+                    console.log(`Account ${accountId}: Attempt ${elementAttempt}/${maxElementRetries} to find Open Amount input...`);
+                    try {
+                        inputElement = await page.waitForSelector('input[type="number"].btn-primary.max-w-24', { timeout: 40000 });
+                        console.log(`Account ${accountId}: Found Open Amount input.`);
+                        break;
+                    } catch (error) {
+                        console.log(`Account ${accountId}: Open Amount input not found on attempt ${elementAttempt}: ${error.message}`);
+                        if (elementAttempt === maxElementRetries) {
+                            console.log(`Account ${accountId}: Refreshing page to try loading the element...`);
+                            await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
+                            await randomDelay(5000, 10000);
+                            await simulateScrolling(page);
+                            try {
+                                inputElement = await page.waitForSelector('input[type="number"].btn-primary.max-w-24', { timeout: 40000 });
+                                console.log(`Account ${accountId}: Found Open Amount input after page refresh.`);
+                                break;
+                            } catch (refreshError) {
+                                console.log(`Account ${accountId}: Open Amount input still not found after refresh: ${refreshError.message}`);
+                                await page.screenshot({ path: `error_${accountId}_input.png` });
+                                const html = await page.content();
+                                await fs.writeFile(`error_${accountId}_input.html`, html);
+                                throw new Error('Open Amount input not found after maximum retries and page refresh');
+                            }
+                        }
+                        await randomDelay(5000, 10000);
+                    }
+                }
+
+                // Ensure the input element is interactable
+                await page.evaluate(el => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), inputElement);
+                const isInputVisible = await page.evaluate(el => {
+                    const style = window.getComputedStyle(el);
+                    return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+                }, inputElement);
+                if (!isInputVisible) {
+                    throw new Error('Open Amount input is not visible');
+                }
+
+                // Simulate human-like interaction with the input
+                await simulateMouseMovement(page);
+                await page.evaluate(el => {
+                    el.dispatchEvent(new Event('mouseover', { bubbles: true }));
+                    el.dispatchEvent(new Event('focus', { bubbles: true }));
+                }, inputElement);
+                await inputElement.click();
+                console.log(`Account ${accountId}: Clicked on the Open Amount input field.`);
+
+                // Set the input field to the quantity
+                await page.evaluate((qty) => {
+                    const input = document.querySelector('input[type="number"].btn-primary.max-w-24');
+                    if (input) {
+                        const maxValue = input.getAttribute('max') || 999999;
+                        input.value = Math.min(qty, parseInt(maxValue, 10));
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                        input.dispatchEvent(new Event('change', { bubbles: true }));
+                    } else {
+                        throw new Error('Open Amount input field not found after retries');
+                    }
+                }, quantity);
+
+                console.log(`Account ${accountId}: Set Open Amount to ${quantity}.`);
+
+                // Find the "Open" button
+                let buttonElement = null;
+                for (let elementAttempt = 1; elementAttempt <= maxElementRetries; elementAttempt++) {
+                    console.log(`Account ${accountId}: Attempt ${elementAttempt}/${maxElementRetries} to find Open button...`);
+                    try {
+                        buttonElement = await page.waitForSelector('div.opacity-100.bg-black\\/50.h3.rounded-full.text-center.py-5.px-10.flex.gap-2.items-center.cursor-pointer', { timeout: 50000 });
+                        console.log(`Account ${accountId}: Found Open button.`);
+                        break;
+                    } catch (error) {
+                        console.log(`Account ${accountId}: Open button not found on attempt ${elementAttempt}: ${error.message}`);
+                        if (elementAttempt === maxElementRetries) {
+                            await page.screenshot({ path: `error_${accountId}_button.png` });
+                            const html = await page.content();
+                            await fs.writeFile(`error_${accountId}_button.html`, html);
+                            throw new Error('Open button not found after maximum retries');
+                        }
+                        await randomDelay(5000, 10000);
+                    }
+                }
+
+                // Ensure the button is interactable
+                await page.evaluate(el => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), buttonElement);
+                const isButtonVisible = await page.evaluate(el => {
+                    const style = window.getComputedStyle(el);
+                    return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+                }, buttonElement);
+                if (!isButtonVisible) {
+                    throw new Error('Open button is not visible');
+                }
+
+                // Simulate human-like interaction with the button
+                await simulateMouseMovement(page);
+                await page.evaluate(el => {
+                    const events = ['mouseover', 'mousedown', 'mouseup', 'click'];
+                    events.forEach(eventType => {
+                        const event = new Event(eventType, { bubbles: true });
+                        el.dispatchEvent(event);
+                    });
+                }, buttonElement);
+
+                console.log(`Account ${accountId}: Clicked the Open button.`);
+
+                // Wait for the action to complete by checking for quantity update
+                let newQuantity = quantity;
+                let quantityCheckAttempts = 0;
+                const maxQuantityCheckAttempts = 10;
+                while (quantityCheckAttempts < maxQuantityCheckAttempts) {
+                    await randomDelay(2000, 4000);
+                    newQuantity = await page.evaluate(() => {
+                        const quantityElement = Array.from(document.querySelectorAll('div')).find(el => el.innerText.includes('Quantity:'));
+                        if (quantityElement) {
+                            const match = quantityElement.innerText.match(/Quantity:\s*(\d+)/);
+                            return match ? parseInt(match[1], 10) : 0;
+                        }
+                        return 0;
+                    });
+
+                    if (newQuantity < quantity) {
+                        console.log(`Account ${accountId}: Action confirmed - quantity decreased from ${quantity} to ${newQuantity}.`);
+                        break;
+                    }
+
+                    quantityCheckAttempts++;
+                    console.log(`Account ${accountId}: Quantity check attempt ${quantityCheckAttempts}/${maxQuantityCheckAttempts} - quantity still ${newQuantity}.`);
+                }
+
+                if (newQuantity >= quantity) {
+                    console.log(`Account ${accountId}: Action did not register - quantity did not decrease (still ${newQuantity}). Saving debug info...`);
+                    await page.screenshot({ path: `error_${accountId}_action.png` });
+                    const html = await page.content();
+                    await fs.writeFile(`error_${accountId}_action.html`, html);
+                    throw new Error('Action did not register on the server');
+                }
+
+                console.log(`Account ${accountId}: Successfully completed actions. Quantity reduced to ${newQuantity}.`);
+                await browser.close();
+                return true;
+
+            } catch (error) {
+                console.error(`Account ${accountId}: Error during automation: ${error.message}`);
+                await browser.close();
+                return false;
+            }
+        } catch (error) {
+            console.error(`Account ${accountId} - Attempt ${attempt} failed: ${error.message}`);
+            if (browser) await browser.close();
+            if (attempt === maxRetries) {
+                console.error(`Account ${accountId}: Max retries reached. Pausing for 1 hour...`);
+                await randomDelay(3600000, 3660000);
+                return false;
+            }
+            await randomDelay(10000, 15000);
         }
-        console.log('Reloading the page to try again...');
-        await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
-        await new Promise(resolve => setTimeout(resolve, 30000));
-      }
     }
+    return false;
+}
 
-    if (claimButton) {
-      const buttonText = await page.evaluate(btn => btn.textContent.trim(), claimButton);
-      const buttonClasses = await page.evaluate(btn => btn.className, claimButton);
-      console.log(`Found "Claim Reward" button with text: "${buttonText}" and classes: "${buttonClasses}"`);
+// Main function to process all accounts
+async function processToken() {
+    const tokenData = await getTokenData();
 
-      if (buttonText.toLowerCase().includes('claim')) {
-        const isDisabled = await page.evaluate(btn => btn.disabled, claimButton);
-        if (!isDisabled) {
-          await claimButton.click();
-          console.log(`Quest ကို Claim လုပ်လိုက်ပါပြီ: ${quest.title} (ID: ${quest.id})`);
-          console.log(`Successfully claimed the reward for quest: ${quest.title} (ID: ${quest.id})!`);
-          await new Promise(resolve => setTimeout(resolve, 15000)); // Claim ပြီး စောင့်ဆိုင်းချိန်ကို တိုးပေးထားပါတယ်
+    for (const accountId in tokenData) {
+        console.log(`Processing account: ${accountId}`);
+        const success = await processTokenWithRetry(accountId, tokenData[accountId]);
+        if (success) {
+            console.log(`Account ${accountId}: Successfully processed.`);
         } else {
-          console.log(`Failed: Claim button is disabled for quest: ${quest.title} (ID: ${quest.id})`);
+            console.log(`Account ${accountId}: Failed to process.`);
         }
-      } else {
-        console.log(`Found element does not have the text "Claim": "${buttonText}". Skipping...`);
-      }
-    } else {
-      console.log(`Failed: Could not find "Claim Reward" button for quest: ${quest.title} (ID: ${quest.id})`);
-    }
-  } catch (error) {
-    console.error(`Quest ကို လုပ်ဆောင်ရာမှာ အမှားဖြစ်သွားပါတယ် ${quest.title} (ID: ${quest.id}):`, error.message);
-  } finally {
-    await browser.close();
-  }
-}
-
-// Function to process all accounts for one run
-async function processAllAccounts(accounts, proxies) {
-  for (let i = 0; i < accounts.length; i++) {
-    const { username, token } = accounts[i];
-    const proxy = proxies.length > 0 ? proxies[i % proxies.length] : null;
-    console.log(`=== Processing account: ${username}${proxy ? ` with proxy: ${proxy}` : ' without proxy'} ===`);
-
-    try {
-      const unclaimedQuests = await fetchUnclaimedQuests(token, proxy);
-      console.log(`Found ${unclaimedQuests.length} unclaimed quests for ${username}`);
-
-      for (const quest of unclaimedQuests) {
-        console.log(`Processing quest for ${username}: ${quest.title} (ID: ${quest.id}, Claimable: ${quest.isClaimable})`);
-        await processQuest(token, quest, proxy);
-        console.log('Waiting 15 seconds before processing the next quest...');
-        await new Promise(resolve => setTimeout(resolve, 15000));
-      }
-
-      console.log(`All unclaimed quests processed for ${username}!`);
-    } catch (error) {
-      console.error(`Failed to process quests for ${username}:`, error.message);
-      if (error.message.includes('Authentication failed')) {
-        console.log(`Please check the token for ${username} in token.txt. It might be invalid or expired.`);
-        console.log('You may need to log in manually to get a new token and update token.txt.');
-      }
+        await randomDelay(10000, 20000);
     }
 
-    console.log('Waiting 20 seconds before processing the next account...');
-    await new Promise(resolve => setTimeout(resolve, 20000));
-  }
+    console.log(`All accounts processed. Script completed.`);
 }
 
-// Main function to run the script for multiple accounts with auto-retry
-async function main() {
-  try {
-    console.log('Make sure you have activated the virtual environment with: source venv/bin/activate');
-
-    const accounts = await readTokens();
-    const proxies = await readProxies();
-
-    const maxRuns = 2; // အကောင့်အကုန်လုံး ပြီးရင် နောက်တစ်ကြိမ် ထပ် Run မယ်
-    for (let run = 1; run <= maxRuns; run++) {
-      console.log(`=== Starting Run ${run} of ${maxRuns} ===`);
-      await processAllAccounts(accounts, proxies);
-      if (run < maxRuns) {
-        console.log(`Run ${run} completed. Starting the next run in 30 seconds...`);
-        await new Promise(resolve => setTimeout(resolve, 30000));
-      }
-    }
-
-    console.log('All runs completed! Script has finished.');
-  } catch (error) {
-    console.error('Script failed:', error.message);
-  }
-}
-
-// Run the script
-main();
+// Start the script
+processToken().catch(error => {
+    console.error(`Fatal error: ${error.message}`);
+    process.exit(1);
+});
