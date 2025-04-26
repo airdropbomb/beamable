@@ -180,7 +180,7 @@ async function clickShowMoreButton(page, accountId, maxAttempts = 5) {
             console.log(error(`Account ${highlight(accountId)}: Error while clicking "Show More": ${err.message}`));
             break;
         }
-        attempts++; // Corrected from 'periods++'
+        attempts++;
     }
 
     if (showMoreFound) {
@@ -503,7 +503,7 @@ async function processToken(mode) {
             }
             await randomDelay(10000, 20000);
         }
-        console.log(success(`All accounts processed. Script completed.`));
+        console.log(chalk.green(`All accounts processed. Script completed.`)); // Fixed: Use chalk.green directly
     }
 }
 
