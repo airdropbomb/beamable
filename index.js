@@ -374,7 +374,7 @@ async function processBoxOpen(accountId, harborSession, maxRetries = 3) {
             for (let elementAttempt = 1; elementAttempt <= maxElementRetries; elementAttempt++) {
                 try {
                     inputElement = await page.waitForSelector('input[type="number"].btn-primary.max-w-24', { timeout: 40000 });
-                    console.log(info(`Account ${highlight柯accountId)}: Found Open Amount input.`));
+                    console.log(info(`Account ${highlight(accountId)}: Found Open Amount input.`));
                     break;
                 } catch (err) {
                     console.log(error(`Account ${highlight(accountId)}: Open Amount input not found on attempt ${elementAttempt}: ${err.message}`));
