@@ -330,8 +330,12 @@ async function processDailyClaim(accountId, harborSession, maxRetries = 3) {
             return claimButtonFound;
         } catch (err) {
             console.log(error(`Account ${highlight(accountId)} - Attempt ${attempt} failed: ${err.message}`));
-            await page.screenshot({ path: `error_${accountId}_attempt_${attempt}_${Date.now()}.png` });
-            await fs.writeFile(`error_${accountId}_attempt_${Date.now()}.html`, await page.content());
+            try {
+                await page.screenshot({ path: `error_${accountId}_attempt_${attempt}_${Date.now()}.png` });
+                await fs.writeFile(`error_${accountId}_attempt_${Date.now()}.html`, await page.content());
+            } catch (screenshotErr) {
+                console.log(error(`Account ${highlight(accountId)}: Failed to capture screenshot: ${screenshotErr.message}`));
+            }
             if (browser) await browser.close();
             if (attempt === maxRetries) {
                 console.log(error(`Account ${highlight(accountId)}: Max retries reached. Pausing for 1 hour...`));
@@ -487,8 +491,12 @@ async function processBoxOpen(accountId, harborSession, maxRetries = 3) {
             return true;
         } catch (err) {
             console.log(error(`Account ${highlight(accountId)} - Attempt ${attempt} failed: ${err.message}`));
-            await page.screenshot({ path: `error_${accountId}_attempt_${attempt}_${Date.now()}.png` });
-            await fs.writeFile(`error_${accountId}_attempt_${Date.now()}.html`, await page.content());
+            try {
+                await page.screenshot({ path: `error_${accountId}_attempt_${attempt}_${Date.now()}.png` });
+                await fs.writeFile(`error_${accountId}_attempt_${Date.now()}.html`, await page.content());
+            } catch (screenshotErr) {
+                console.log(error(`Account ${highlight(accountId)}: Failed to capture screenshot: ${screenshotErr.message}`));
+            }
             if (browser) await browser.close();
             if (attempt === maxRetries) {
                 console.log(error(`Account ${highlight(accountId)}: Max retries reached. Pausing for 1 hour...`));
@@ -510,11 +518,16 @@ async function processToken(mode) {
             let allAccountsProcessed = true;
             for (const accountId in tokenData) {
                 console.log(highlight(`Processing account: ${accountId} (Daily Claim)`));
-                const success = await processDailyClaim(accountId, tokenData[accountId]);
-                if (success) {
-                    console.log(success(`Account ${highlight(accountId)}: Successfully claimed.`));
-                } else {
-                    console.log(warning(`Account ${highlight(accountId)}: No action taken or failed.`));
+                try {
+                    const success = await processDailyClaim(accountId, tokenData[accountId]);
+                    if (success) {
+                        console.log(success(`Account ${highlight(accountId)}: Successfully claimed.`));
+                    } else {
+                        console.log(warning(`Account ${highlight(accountId)}: No action taken or failed.`));
+                        allAccountsProcessed = false;
+                    }
+                } catch (err) {
+                    console.log(error(`Account ${highlight(accountId)}: Error processing account: ${err.message}`));
                     allAccountsProcessed = false;
                 }
                 await randomDelay(10000, 20000);
@@ -526,15 +539,19 @@ async function processToken(mode) {
     } else if (mode === 'box') {
         for (const accountId in tokenData) {
             console.log(highlight(`Processing account: ${accountId} (Box Open)`));
-            const success = await processBoxOpen(accountId, tokenData[accountId]);
-            if (success) {
-                console.log(success(`Account ${highlight(accountId)}: Processed successfully.`));
-            } else {
-                console.log(error(`Account ${highlight(accountId)}: Failed to process.`));
+            try {
+                const success = await processBoxOpen(accountId, tokenData[accountId]);
+                if (success) {
+                    console.log(success(`Account ${highlight(accountId)}: Processed successfully.`));
+                } else {
+                    console.log(error(`Account ${highlight(accountId)}: Failed to process.`));
+                }
+            } catch (err) {
+                console.log(error(`Account ${highlight(accountId)}: Error processing account: ${err.message}`));
             }
             await randomDelay(10000, 20000);
         }
-        console.log(success('All accounts processed. Script completed.'));
+        console.log(success(`All accounts processed. Script completed.`));
     }
 }
 
