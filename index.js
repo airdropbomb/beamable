@@ -53,7 +53,7 @@ async function getTokenData() {
         for (const line of lines) {
             const parts = line.split('=');
             if (parts.length < 3) {
-                console.log(error(`Invalid line format (not enough parts): ${line}`));
+                console.log(error(`Invalid line format: ${line}`));
                 continue;
             }
             const accountId = parts[0];
@@ -65,7 +65,7 @@ async function getTokenData() {
                 const maskedValue = value.substring(0, 5) + '****' + value.substring(value.length - 5);
                 console.log(success(`Account ${highlight(accountId)}: Cookie loaded - ${maskedValue}`));
             } else {
-                console.log(error(`Account ${highlight(accountId)}: Invalid key (expected harborSession, got ${key})`));
+                console.log(error(`Account ${highlight(accountId)}: Invalid key (expected harborSession)`));
             }
         }
 
@@ -173,7 +173,7 @@ async function clickShowMoreButton(page, accountId, maxAttempts = 5) {
                 showMoreFound = true;
                 attempts = 0;
             } else {
-                console.log(warning(`Account ${highlight(accountId)}: No "Show More" button found on attempt ${attempts + 1}.`));
+                console.log(info(`Account ${highlight(accountId)}: No "Show More" button found on attempt ${attempts + 1}.`));
                 break;
             }
         } catch (err) {
@@ -284,19 +284,12 @@ async function processDailyClaim(accountId, harborSession, maxRetries = 3) {
                     const dayText = dayLabel.asElement() ? await dayLabel.evaluate(el => el.textContent.trim()) : `Button ${i + 1}`;
 
                     if (isClaimButton) {
-                        console.log(info(`Account ${highlight(accountId)}: Found claimable button for ${dayText} - Text: ${text}, Disabled: ${isDisabled}, Visible: ${isVisible}`));
-                        if (isDisabled) {
-                            console.log(warning(`Account ${highlight(accountId)}: Claim button for ${dayText} is disabled.`));
-                            continue;
-                        }
-                        if (!isVisible) {
-                            console.log(warning(`Account ${highlight(accountId)}: Claim button for ${dayText} is not visible.`));
+                        if (isDisabled || !isVisible) {
                             continue;
                         }
 
                         const boundingBox = await button.boundingBox();
                         if (!boundingBox) {
-                            console.log(warning(`Account ${highlight(accountId)}: Claim button for ${dayText} is not clickable (no bounding box).`));
                             continue;
                         }
 
@@ -309,12 +302,10 @@ async function processDailyClaim(accountId, harborSession, maxRetries = 3) {
                         await page.waitForNetworkIdle({ timeout: 15000, idleTime: 500 }).catch(() => {});
                         const newText = await button.evaluate(el => el.textContent.trim().toLowerCase());
                         if (newText.includes('claim')) {
-                            console.log(warning(`Account ${highlight(accountId)}: Button text still says "Claim". Trying JavaScript click...`));
                             await page.evaluate(el => el.click(), button);
                             await page.waitForNetworkIdle({ timeout: 15000, idleTime: 500 }).catch(() => {});
                             const finalText = await button.evaluate(el => el.textContent.trim().toLowerCase());
                             if (finalText.includes('claim')) {
-                                console.log(error(`Account ${highlight(accountId)}: Click failed for ${dayText}. Button text still says "Claim".`));
                                 continue;
                             }
                         }
@@ -421,7 +412,7 @@ async function processBoxOpen(accountId, harborSession, maxRetries = 3) {
                         await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
                         try {
                             inputElement = await page.waitForSelector('input[type="number"].btn-primary.max-w-24', { timeout: 40000 });
-                            console.log(success(`Account ${highlight(accountId)}: Found Open Amount input after page refresh.`));
+                            console.log(success(`Account ${highlight(accountthe Open Amount input after page refresh.`));
                             break;
                         } catch (refreshErr) {
                             console.log(error(`Account ${highlight(accountId)}: Open Amount input still not found after refresh: ${refreshErr.message}`));
