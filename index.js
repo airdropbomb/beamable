@@ -1,8 +1,8 @@
 console.log(`
  █████╗ ██████╗ ██████╗     ███╗   ██╗ ██████╗ ██████╗ ███████╗
 ██╔══██╗██╔══██╗██╔══██╗    ████╗  ██║██╔═══██╗██╔══██╗██╔════╝
-███████║██║  ██║██████╔╝    ██╔██╗ ██║██║   ██║██║  ██║█████╗  
-██╔══██║██║  ██║██╔══██╗    ██║╚██╗██║██║   ██║██║  ██║██╔══╝  
+███████║██║  ██║██████╔╝    ██╔██╗ ██║██║   ██║██║  ██║█████╗
+██╔══██║██║  ██║██╔══██╗    ██║╚██╗██║██║   ██║██║  ██║██╔══╝
 ██║  ██║██████╔╝██████╔╝    ██║ ╚████║╚██████╔╝██████╔╝███████╗
 ╚═╝  ╚═╝╚═════╝ ╚═════╝     ╚═╝  ╚═══╝ ╚═════╝ ╚═════╝ ╚══════╝
 by btctrader
@@ -13,7 +13,7 @@ const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const fs = require('fs').promises;
 const path = require('path');
 const readline = require('readline');
-const chalk = require('chalk'); // Added chalk for colored console output
+const chalk = require('chalk'); // Chalk for colored console output
 
 // Use the stealth plugin to avoid detection
 puppeteer.use(StealthPlugin());
@@ -28,13 +28,13 @@ const rl = readline.createInterface({
     output: process.stdout
 });
 
-// Color definitions for different types of messages
+// Color definitions with fallback for compatibility
 const info = chalk.cyan; // Cyan for informational messages
 const success = chalk.green; // Green for successful actions
 const error = chalk.red; // Red for errors
 const warning = chalk.yellow; // Yellow for warnings or cautions
 const prompt = chalk.magenta; // Magenta for user prompts
-const highlight = chalk.bold.white; // Bold white for emphasis
+const highlight = chalk.bold.white || chalk.bold; // Fallback to bold if white is unavailable
 
 // Ensure check-in directory exists (for Daily Claim)
 async function ensureCheckinDir() {
@@ -180,7 +180,7 @@ async function clickShowMoreButton(page, accountId, maxAttempts = 5) {
             console.log(error(`Account ${highlight(accountId)}: Error while clicking "Show More": ${err.message}`));
             break;
         }
-        attempts++;
+        periods++;
     }
 
     if (showMoreFound) {
