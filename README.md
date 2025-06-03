@@ -13,7 +13,7 @@ cd beamable
 
 2. Install the required packages:
 ```
-npm install puppeteer
+npm install
 ```
 
 ## Setup
